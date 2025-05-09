@@ -5,10 +5,19 @@ import FHIR from 'fhirclient';
 
 // --- Configuration ---
 const CLIENT_ID = '023dda75-b5e9-4f99-9c0b-dc5704a04164'; // Your provided client_id
-const APP_REDIRECT_URI = window.location.origin + window.location.pathname; // Assumes app is at root
+
+// This will dynamically set the redirect URI based on where the app is hosted.
+// For your Netlify deployment, it will correctly be https://snpvite.netlify.app/
+// Ensure this exact URL (including http/https and trailing slash if present)
+// is registered as a Redirect URI in your Epic App Orchard configuration.
+const APP_REDIRECT_URI = window.location.origin + window.location.pathname; 
 
 // URL for your backend proxy.
-const BACKEND_PROXY_URL = 'http://localhost:3001/api/fhir-proxy';
+// If your backend is still running locally for testing with the Netlify frontend:
+const BACKEND_PROXY_URL = 'http://localhost:3001/api/fhir-proxy'; 
+// IF YOUR BACKEND IS DEPLOYED TO A PUBLIC URL, REPLACE THE LINE ABOVE WITH:
+// const BACKEND_PROXY_URL = 'https://your-deployed-backend-url.com/api/fhir-proxy';
+
 
 // --- UI Helper Functions ---
 function showLoading(isLoading, section = 'loading') {
