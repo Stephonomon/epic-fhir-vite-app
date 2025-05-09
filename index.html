@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Epic FHIR Vite App</title>
+    <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+    <div id="app">
+        <h1>SMART on FHIR App</h1>
+        <div id="loading">Loading...</div>
+        
+        <div id="patient-info" style="display:none;">
+            <h2>Patient Data</h2>
+            <pre id="patient-data"></pre>
+        </div>
+
+        <div id="vital-signs-info" style="display:none;">
+            <h2>Recent Vital Signs</h2>
+            <pre id="vital-signs-data"></pre>
+        </div>
+
+        <div id="error-info" style="display:none; color: red;"></div>
+        
+        <div id="auth-details" style="display:none;">
+            <h3>Auth Details (for debugging)</h3>
+            <p>Access Token: <code id="access-token-display"></code></p>
+            <p>Patient ID: <code id="patient-id-display"></code></p>
+            <p>FHIR Server (iss): <code id="fhir-server-display"></code></p>
+            <h4>Full Token Response:</h4>
+            <pre id="token-response-display"></pre>
+        </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
