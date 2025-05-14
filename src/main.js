@@ -299,7 +299,7 @@ if (sessionStorage.getItem('SMART_KEY')) {
         showLoading(true, 'loading');
         FHIR.oauth2.authorize({
             client_id: CLIENT_ID,
-            scope: 'launch launch/patient patient/*.read observation/*.read openid fhirUser context-user context-fhirUser context-login_dept',
+            scope: 'launch launch/patient patient/*.read observation/*.read openid fhirUser context-user context-fhirUser  context-enc_date context-user_ip context-syslogin context-user_timestamp context-workstation_id',
             redirect_uri: APP_REDIRECT_URI,
             iss: iss, // Pass the iss from the launch URL
             launch: launchToken, // Pass the launch token
