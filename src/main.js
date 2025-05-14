@@ -100,6 +100,7 @@ function displayAuthDetails(client) {
     const authDetailsElement = document.getElementById('auth-details');
     const accessTokenDisplayElement = document.getElementById('access-token-display');
     const patientIdDisplayElement = document.getElementById('patient-id-display');
+
     const fhirServerDisplayElement = document.getElementById('fhir-server-display');
     const tokenResponseDisplayElement = document.getElementById('token-response-display');
 
@@ -109,6 +110,30 @@ function displayAuthDetails(client) {
     if (fhirServerDisplayElement) fhirServerDisplayElement.textContent = client?.state?.serverUrl || "N/A"; else console.warn("UI element 'fhir-server-display' not found.");
     if (tokenResponseDisplayElement) tokenResponseDisplayElement.textContent = client?.state?.tokenResponse ? JSON.stringify(client.state.tokenResponse, null, 2) : "No token response available."; else console.warn("UI element 'token-response-display' not found.");
 }
+
+function displayLaunchTokenData(client) {
+    const launchTokenDiv = document.getElementById("launch-token-data");
+    const launchTokenJson = document.getElementById("launch-token-json");
+
+    if (!client?.state?.tokenResponse) return;
+
+    const token = client.state.tokenResponse;
+
+    // Filter out standard OAuth fields to focus on Epic-specific ones
+    const filtered = {};
+    for (const key in token) {
+        if (!["access_token", "token_type", "expires_in", "scope", "id_token"].includes(key)) {
+            filtered[key] = token[key];
+        }
+    }
+
+    if (Object.keys(filtered).length > 0) {
+        launchTokenDiv.style.display = 'block';
+        launchTokenJson.textContent = JSON.stringify(filtered, null, 2);
+    }
+}
+
+
 
 function displayError(message, errorObj = null) {
     showLoading(false); 
@@ -246,7 +271,8 @@ if (sessionStorage.getItem('SMART_KEY')) {
             window.smartClient = client; 
             
             const patientData = await fetchPatientData(client);
-            displayAuthDetails(client); 
+            displayAuthDetails(client);
+            displayLaunchTokenData(client); 
 
             if (client.patient && client.patient.id) {
                 await fetchVitalSigns(client);
