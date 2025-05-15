@@ -39,3 +39,34 @@ code {
   padding: 0.2em 0.4em;
   border-radius: 4px;
 }
+
+/* Collapsible sections */
+details {
+  background: #333;
+  border-radius: 8px;
+  margin: 1rem 0;
+  padding: 0.5rem;
+}
+details[open] summary {
+  font-weight: bold;
+}
+summary {
+  cursor: pointer;
+  outline: none;
+}
+
+/* Medications table */
+#medications-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+#medications-table th,
+#medications-table td {
+  border: 1px solid #555;
+  padding: 0.5rem;
+  text-align: left;
+}
+#medications-table th {
+  background: #444;
+}
