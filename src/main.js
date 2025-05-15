@@ -15,6 +15,7 @@ const APP_REDIRECT_URI = window.location.origin + window.location.pathname;
 // URL for your backend proxy.
 // If your backend is still running locally for testing with the Netlify frontend:
 //const BACKEND_PROXY_URL = 'http://localhost:3001/api/fhir-proxy'; 
+// in terminal type in npm run dev
 // IF YOUR BACKEND IS DEPLOYED TO A PUBLIC URL, REPLACE THE LINE ABOVE WITH:
 const BACKEND_PROXY_URL = 'https://snp-vite-backend.onrender.com/api/fhir-proxy'; // Updated to your Render backend
 
