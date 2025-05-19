@@ -1,10 +1,8 @@
 import './style.css';
 import FHIR from 'fhirclient';
 
-// --- Configuration ---
-const CLIENT_ID = '023dda75-b5e9-4f99-9c0b-dc5704a04164';
-const APP_REDIRECT_URI = window.location.origin + window.location.pathname;
-const BACKEND_PROXY_URL = 'https://snp-vite-backend.onrender.com/api/fhir-proxy';
+// -- Get OpenAI Key from Vite env --
+const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 
 // --- UI Helper Functions ---
 function showLoading(isLoading, section = 'loading') {
@@ -131,6 +129,8 @@ Details: ${errorObj.stack||errorObj}` : '');
 }
 
 // --- FHIR Fetch Helpers ---
+const BACKEND_PROXY_URL = 'https://snp-vite-backend.onrender.com/api/fhir-proxy';
+
 async function fetchResource(path) {
   const client = window.smartClient;
   const serverUrl = client.state.serverUrl;
@@ -172,7 +172,7 @@ function addFetchButtons(client) {
   }
 }
 
-// --- FHIR Data Fetchers (now public so buttons can use them) ---
+// --- FHIR Data Fetchers ---
 async function fetchPatientData(client) {
   showLoading(true);
   if (!client.patient?.id) {
@@ -268,9 +268,7 @@ if (sessionStorage.getItem('SMART_KEY')) {
         await fetchVitalSigns(client);
         await fetchMedications(client);
       }
-      // Add fetch buttons after initial load
       addFetchButtons(client);
-      // Setup chat
       setupChat();
     })
     .catch(err => displayError(`SMART init error: ${err.message}`, err));
@@ -306,13 +304,13 @@ function renderChatHistory() {
   ).join('');
 }
 
-async function sendChatMessage(msg, apiKey) {
+async function sendChatMessage(msg) {
   chatHistory.push({ role: 'user', content: msg });
   renderChatHistory();
 
   const url = "https://api.openai.com/v1/chat/completions";
   const headers = {
-    "Authorization": `Bearer ${apiKey}`,
+    "Authorization": `Bearer ${OPENAI_API_KEY}`,
     "Content-Type": "application/json"
   };
   const messages = chatHistory.map(m => ({ role: m.role, content: m.content }));
@@ -352,7 +350,6 @@ function setupChat() {
     const msg = input.value.trim();
     if (!msg) return;
     input.value = '';
-    await sendChatMessage(msg, OPENAI_API_KEY);
+    await sendChatMessage(msg);
   };
 }
-
