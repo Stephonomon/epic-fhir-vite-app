@@ -76,6 +76,17 @@
             <div id="error-info"></div>
         </details>
 
+<div>
+  <label><input type="checkbox" id="include-patient" checked> Include Patient</label>
+  <label><input type="checkbox" id="include-vitals" checked> Include Vitals</label>
+  <input type="range" id="vitals-count" min="1" max="10" value="3">
+  <span>How many vitals?</span>
+  <label><input type="checkbox" id="include-meds" checked> Include Medications</label>
+  <input type="range" id="meds-count" min="1" max="10" value="3">
+  <span>How many meds?</span>
+</div>
+
+
         <!-- Chat Section -->
 <details id="chat-section-wrapper" style="display:block;">
   <summary><h2>Chat with AI (OpenAI GPT-3.5/4)</h2></summary>
