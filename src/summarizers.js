@@ -1,5 +1,4 @@
-// Summarizers for FHIR data, configurable amounts
-
+// src/summarizers.js
 export function summarizePatient(patient) {
   if (!patient) return "No patient data.";
   return `Patient: ${patient.name?.[0]?.text || ''} (${patient.gender}, DOB: ${patient.birthDate})`;
@@ -15,7 +14,7 @@ export function summarizeVitals(vitals, count = 3) {
   }).join('\n');
 }
 
-export function summarizeMeds(meds, count = 10) {
+export function summarizeMeds(meds, count = 3) {
   if (!meds?.entry?.length) return "No current medications.";
   return "Current medications:\n" + meds.entry.slice(0, count).map(e => {
     const r = e.resource;

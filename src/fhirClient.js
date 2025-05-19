@@ -1,29 +1,10 @@
-import FHIR from 'fhirclient';
-
-const BACKEND_PROXY_URL = 'https://snp-vite-backend.onrender.com/api/fhir-proxy';
-
-// SMART on FHIR auth/launch
-export async function smartReady() {
-  return FHIR.oauth2.ready();
-}
-
-// Fetch Patient, Vitals, Medications
-export async function fetchPatient(client) {
-  return fetchResource(client, `Patient/${client.patient.id}`);
-}
-
-export async function fetchVitals(client) {
-  return fetchResource(client, 'Observation?category=vital-signs&_sort=-date&_count=10');
-}
-
-export async function fetchMedications(client) {
-  return fetchResource(client, 'MedicationRequest?_sort=-authoredon&_count=10');
-}
-
-// Generic FHIR resource fetch
-async function fetchResource(client, path) {
+// src/fhirClient.js
+export async function fetchResource({ client, path, backendUrl }) {
+  if (!client?.state?.serverUrl || !client?.state?.tokenResponse?.access_token) {
+    throw new Error("No valid SMART client state for fetching FHIR resource.");
+  }
   const serverUrl = client.state.serverUrl;
-  let url = `${BACKEND_PROXY_URL}/${path}`;
+  let url = `${backendUrl}/${path}`;
   const sep = url.includes('?') ? '&' : '?';
   url += `${sep}patient=${client.patient.id}&targetFhirServer=${encodeURIComponent(serverUrl)}`;
 

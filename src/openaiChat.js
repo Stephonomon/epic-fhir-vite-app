@@ -1,6 +1,6 @@
+// src/openaiChat.js
 import { summarizePatient, summarizeVitals, summarizeMeds } from './summarizers.js';
 
-// Returns { role, content } AI response
 export async function getChatResponse({
   chatHistory,
   patient,
