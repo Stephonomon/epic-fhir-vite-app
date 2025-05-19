@@ -1,9 +1,8 @@
-import './style.css'; // Import CSS
-// Make sure fhirclient is installed: npm install fhirclient
+import './style.css';
 import FHIR from 'fhirclient';
 
 // --- Configuration ---
-const CLIENT_ID = '023dda75-b5e9-4f99-9c0b-dc5704a04164'; // Your provided client_id
+const CLIENT_ID = '023dda75-b5e9-4f99-9c0b-dc5704a04164';
 const APP_REDIRECT_URI = window.location.origin + window.location.pathname;
 const BACKEND_PROXY_URL = 'https://snp-vite-backend.onrender.com/api/fhir-proxy';
 
@@ -12,20 +11,14 @@ function showLoading(isLoading, section = 'loading') {
   const loadingElement = document.getElementById(section);
   if (loadingElement) {
     loadingElement.style.display = isLoading ? 'block' : 'none';
-  } else {
-    console.warn(`UI element '${section}' not found.`);
   }
 }
 
-// Toggle collapsible sections by wrapper ID prefix
 function toggleSection(sectionId, show) {
   const wrapper = document.getElementById(`${sectionId}-wrapper`);
   if (wrapper) wrapper.style.display = show ? 'block' : 'none';
 }
 
-// --- Display Functions ---
-
-// Render patient details as a list
 function displayPatientData(data) {
   toggleSection('patient-info', true);
   const list = document.getElementById('patient-data-list');
@@ -56,7 +49,6 @@ function displayPatientData(data) {
   });
 }
 
-// Render recent vital signs in a <pre>
 function displayVitalSigns(data) {
   toggleSection('vital-signs-info', true);
   const element = document.getElementById('vital-signs-data');
@@ -66,7 +58,6 @@ function displayVitalSigns(data) {
     text = data.entry.map(entry => {
       const r = entry.resource;
       if (!r) return "Malformed entry: no resource found";
-
       let line = r.code?.text || r.code?.coding?.[0]?.display || "Unknown Vital";
       if (r.valueQuantity) {
         line += `: ${r.valueQuantity.value} ${r.valueQuantity.unit||''}`;
@@ -92,7 +83,6 @@ function displayVitalSigns(data) {
   element.textContent = text;
 }
 
-// Auth details display
 function displayAuthDetails(client) {
   toggleSection('auth-details', true);
   const accessEl = document.getElementById('access-token-display');
@@ -111,7 +101,6 @@ function displayAuthDetails(client) {
     : 'No token response available.';
 }
 
-// Launch token display
 function displayLaunchTokenData(client) {
   const wrapper = document.getElementById('launch-token-data-wrapper');
   const jsonEl = document.getElementById('launch-token-json');
@@ -130,7 +119,6 @@ function displayLaunchTokenData(client) {
   }
 }
 
-// Error display
 function displayError(message, errorObj = null) {
   showLoading(false);
   toggleSection('error-info', true);
@@ -146,12 +134,10 @@ Details: ${errorObj.stack||errorObj}` : '');
 async function fetchResource(path) {
   const client = window.smartClient;
   const serverUrl = client.state.serverUrl;
-  // Build URL, preserving any existing query parameters
   let url = `${BACKEND_PROXY_URL}/${path}`;
   const sep = url.includes('?') ? '&' : '?';
   url += `${sep}patient=${client.patient.id}&targetFhirServer=${encodeURIComponent(serverUrl)}`;
   
-  // Request JSON explicitly to avoid XML responses
   const resp = await fetch(url, {
     headers: {
       'Authorization': `Bearer ${client.state.tokenResponse.access_token}`,
@@ -166,7 +152,27 @@ async function fetchResource(path) {
   return resp.json();
 }
 
-// Fetch and display patient
+// --- Add Fetch Buttons After Successful Login ---
+function addFetchButtons(client) {
+  const appDiv = document.getElementById('app');
+  if (!document.getElementById('fetch-btns-row')) {
+    const fetchBtnDiv = document.createElement('div');
+    fetchBtnDiv.id = 'fetch-btns-row';
+    fetchBtnDiv.style.margin = "1em 0";
+    fetchBtnDiv.innerHTML = `
+      <button id="fetch-patient-btn">Fetch Patient</button>
+      <button id="fetch-vitals-btn">Fetch Vitals</button>
+      <button id="fetch-meds-btn">Fetch Medications</button>
+    `;
+    appDiv.insertBefore(fetchBtnDiv, appDiv.children[1]);
+
+    document.getElementById('fetch-patient-btn').onclick = () => fetchPatientData(client);
+    document.getElementById('fetch-vitals-btn').onclick = () => fetchVitalSigns(client);
+    document.getElementById('fetch-meds-btn').onclick = () => fetchMedications(client);
+  }
+}
+
+// --- FHIR Data Fetchers (now public so buttons can use them) ---
 async function fetchPatientData(client) {
   showLoading(true);
   if (!client.patient?.id) {
@@ -183,11 +189,9 @@ async function fetchPatientData(client) {
   }
 }
 
-// Fetch and display vitals
 async function fetchVitalSigns(client) {
   showLoading(true);
   try {
-    // Search vital signs without manual patient param (fetchResource appends it)
     const data = await fetchResource('Observation?category=vital-signs&_sort=-date&_count=10');
     displayVitalSigns(data);
   } catch (e) {
@@ -197,13 +201,11 @@ async function fetchVitalSigns(client) {
   }
 }
 
-// --- Medications Section ---
 function displayMedications(data) {
   toggleSection('medications-info', true);
   const tbody = document.querySelector('#medications-table tbody');
   tbody.innerHTML = '';
 
-  // Sort by authoredOn descending
   const entries = (data.entry || []).slice().sort((a, b) => {
     const da = a.resource.authoredOn ? new Date(a.resource.authoredOn) : 0;
     const db = b.resource.authoredOn ? new Date(b.resource.authoredOn) : 0;
@@ -216,31 +218,19 @@ function displayMedications(data) {
     const status = resource.status || 'N/A';
     const date = resource.authoredOn?.split('T')[0] || 'N/A';
     const provider = resource.requester?.display || resource.requester?.reference || 'N/A';
-    // Use dosageInstruction.text for patient instructions
-// inside displayMedications:
-const instructions = (resource.dosageInstruction || [])
-  .map(di => {
-    // 1) take the clean, patient‐facing string if it exists…
-    if (di.patientInstruction) {
-      return di.patientInstruction;
-    }
-    // 2) otherwise fall back to slicing off everything after the first comma:
-    if (di.text && di.text.includes(',')) {
-      return di.text.split(',')[0].trim() + '.';
-    }
-    // 3) last resort, grab whatever `text` was there
-    return di.text || 'N/A';
-  })
-  .join('; ');
-
-
+    const instructions = (resource.dosageInstruction || [])
+      .map(di => {
+        if (di.patientInstruction) return di.patientInstruction;
+        if (di.text && di.text.includes(',')) return di.text.split(',')[0].trim() + '.';
+        return di.text || 'N/A';
+      })
+      .join('; ');
 
     [med, status, date, provider, instructions].forEach(text => {
       const td = document.createElement('td');
       td.textContent = text;
       tr.appendChild(td);
     });
-
     tbody.appendChild(tr);
   });
 }
@@ -248,7 +238,6 @@ const instructions = (resource.dosageInstruction || [])
 async function fetchMedications(client) {
   showLoading(true);
   try {
-    // Search medication requests without manual patient param (fetchResource appends it)
     const data = await fetchResource('MedicationRequest?_sort=-authoredon&_count=10');
     displayMedications(data);
   } catch (e) {
@@ -267,6 +256,7 @@ const params = new URLSearchParams(window.location.search);
 const launchToken = params.get('launch');
 const iss = params.get('iss');
 
+// --- SMART on FHIR Launch Handling ---
 if (sessionStorage.getItem('SMART_KEY')) {
   FHIR.oauth2.ready()
     .then(async client => {
@@ -278,6 +268,10 @@ if (sessionStorage.getItem('SMART_KEY')) {
         await fetchVitalSigns(client);
         await fetchMedications(client);
       }
+      // Add fetch buttons after initial load
+      addFetchButtons(client);
+      // Setup chat
+      setupChat();
     })
     .catch(err => displayError(`SMART init error: ${err.message}`, err));
 } else if (launchToken && iss) {
@@ -296,4 +290,69 @@ if (sessionStorage.getItem('SMART_KEY')) {
 } else {
   showLoading(false);
   displayError("This app requires an EHR launch or manual configuration.");
+  // Still initialize chat for testing
+  setupChat();
 }
+
+// --- OpenAI Chat Integration ---
+
+let chatHistory = [];
+
+function renderChatHistory() {
+  const chatDiv = document.getElementById('chat-history');
+  if (!chatDiv) return;
+  chatDiv.innerHTML = chatHistory.map(
+    m => `<div style="margin-bottom:6px;"><b>${m.role === 'user' ? 'You' : 'AI'}:</b> ${m.content}</div>`
+  ).join('');
+}
+
+async function sendChatMessage(msg, apiKey) {
+  chatHistory.push({ role: 'user', content: msg });
+  renderChatHistory();
+
+  const url = "https://api.openai.com/v1/chat/completions";
+  const headers = {
+    "Authorization": `Bearer ${apiKey}`,
+    "Content-Type": "application/json"
+  };
+  const messages = chatHistory.map(m => ({ role: m.role, content: m.content }));
+
+  try {
+    chatHistory.push({ role: 'assistant', content: '...' });
+    renderChatHistory();
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo",
+        messages: messages.slice(-10),
+      }),
+    });
+    const data = await response.json();
+    chatHistory.pop(); // Remove "..."
+    const aiMsg = data.choices?.[0]?.message?.content || "No response";
+    chatHistory.push({ role: 'assistant', content: aiMsg });
+    renderChatHistory();
+  } catch (err) {
+    chatHistory.pop();
+    chatHistory.push({ role: 'assistant', content: "Error: " + err.message });
+    renderChatHistory();
+  }
+}
+
+function setupChat() {
+  const chatForm = document.getElementById('chat-form');
+  if (!chatForm) return;
+  renderChatHistory();
+
+  chatForm.onsubmit = async (e) => {
+    e.preventDefault();
+    const input = document.getElementById('chat-input');
+    const msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+    await sendChatMessage(msg, OPENAI_API_KEY);
+  };
+}
+
