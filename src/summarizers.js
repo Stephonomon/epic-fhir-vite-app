@@ -1,23 +1,47 @@
-// src/summarizers.js
+// summarizers.js
 export function summarizePatient(patient) {
   if (!patient) return "No patient data.";
-  return `Patient: ${patient.name?.[0]?.text || ''} (${patient.gender}, DOB: ${patient.birthDate})`;
+  return `Patient Name: ${patient.name?.[0]?.text || ''}\nGender: ${patient.gender}\nDate of Birth: ${patient.birthDate}`;
 }
 
 export function summarizeVitals(vitals, count = 3) {
   if (!vitals?.entry?.length) return "No recent vitals.";
-  return "Recent vitals:\n" + vitals.entry.slice(0, count).map(e => {
+  // Pull the most recent {count} unique measurements
+  let summary = [];
+  for (const e of vitals.entry) {
+    if (summary.length >= count) break;
     const r = e.resource;
-    let line = r.code?.text || "Vital";
-    if (r.valueQuantity) line += `: ${r.valueQuantity.value} ${r.valueQuantity.unit||''}`;
-    return line;
-  }).join('\n');
+    if (!r) continue;
+    // Single value
+    if (r.valueQuantity) {
+      summary.push(`${r.code?.text || 'Vital'}: ${r.valueQuantity.value} ${r.valueQuantity.unit || ''}`);
+    }
+    // Component (like BP: systolic/diastolic)
+    else if (r.component?.length) {
+      let comp = r.component.map(c =>
+        `${c.code?.text || 'Component'}: ${c.valueQuantity?.value || 'N/A'} ${c.valueQuantity?.unit || ''}`
+      ).join(", ");
+      summary.push(`${r.code?.text || 'Composite Vital'}: ${comp}`);
+    }
+  }
+  return "Recent Vitals:\n- " + summary.join('\n- ');
 }
 
 export function summarizeMeds(meds, count = 3) {
   if (!meds?.entry?.length) return "No current medications.";
-  return "Current medications:\n" + meds.entry.slice(0, count).map(e => {
+  // Pull the most recent {count} medications
+  let summary = meds.entry.slice(0, count).map(e => {
     const r = e.resource;
-    return r.medicationCodeableConcept?.text || "Unknown";
-  }).join('\n');
+    const medName = r.medicationCodeableConcept?.text || r.medicationReference?.display || 'Unknown medication';
+    const status = r.status || 'unknown status';
+    // Show instructions if present
+    let instructions = '';
+    if (r.dosageInstruction && r.dosageInstruction.length) {
+      instructions = r.dosageInstruction.map(di =>
+        di.patientInstruction || di.text || '').filter(Boolean).join('; ');
+      if (instructions) instructions = ` | Instructions: ${instructions}`;
+    }
+    return `${medName} (${status})${instructions}`;
+  });
+  return "Current Medications:\n- " + summary.join('\n- ');
 }
