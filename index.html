@@ -4,135 +4,102 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CHOP AI Assistant</title>
+    <title>Epic FHIR Vite App</title>
     <link rel="stylesheet" href="/src/style.css" />
 </head>
 
 <body>
     <div id="app">
-        <h1>CHOP AI Assistant</h1>
+        <h1>SMART on FHIR App</h1>
         <div id="loading">Loading...</div>
 
-        <!-- 🔧 CONTEXT CONFIGURATION PANEL -->
-        <section id="context-config" style="margin: 1em 0; padding: 1em; background: #2a2a2a; border-radius: 8px;">
-            <h2>Customize LLM Context</h2>
-
-            <!-- Patient Data Toggle -->
-            <label>
-                <input type="checkbox" id="include-patient" checked>
-                Include Patient Summary
-            </label>
-
-            <!-- Vitals Toggle + Slider -->
-            <div style="margin: 0.5em 0;">
-                <label>
-                    <input type="checkbox" id="include-vitals" checked>
-                    Include Vital Signs
-                </label>
-                <br>
-                <label for="vitals-count">Number of vitals to include: <span id="vitals-count-label">3</span></label>
-                <input type="range" id="vitals-count" min="1" max="10" value="3">
+        <details id="patient-info-wrapper" style="display:none;">
+            <summary>
+                <h2>Patient Data</h2>
+            </summary>
+            <div id="patient-info">
+                <ul id="patient-data-list"></ul>
             </div>
+        </details>
 
-            <!-- Medications Toggle + Slider -->
-            <div style="margin: 0.5em 0;">
-                <label>
-                    <input type="checkbox" id="include-meds" checked>
-                    Include Medications
-                </label>
-                <br>
-                <label for="meds-count">Number of meds to include: <span id="meds-count-label">3</span></label>
-                <input type="range" id="meds-count" min="1" max="10" value="3">
+        <details id="vital-signs-info-wrapper" style="display:none;">
+            <summary>
+                <h2>Recent Vital Signs</h2>
+            </summary>
+            <div id="vital-signs-info">
+                <pre id="vital-signs-data"></pre>
             </div>
-        </section>
+        </details>
 
-        <!-- 🔍 LLM CONTEXT PREVIEW -->
-        <section id="preview-section" style="margin-bottom: 1em;">
-            <h2>LLM Context Preview</h2>
-            <pre id="context-preview" style="background: #333; padding: 1em; border-radius: 8px;">
-Context will appear here once you’ve fetched patient data.
-      </pre>
-        </section>
+        <details id="medications-info-wrapper" style="display:none;">
+            <summary>
+                <h2>Medications</h2>
+            </summary>
+            <div id="medications-info">
+                <table id="medications-table">
+                    <thead>
+                        <tr>
+                            <th>Medication</th>
+                            <th>Status</th>
+                            <th>Date Written</th>
+                            <th>Provider</th>
+                            <th>Instructions</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </details>
+
+        <details id="launch-token-data-wrapper" style="display:none;">
+            <summary>
+                <h3>Launch Token Info</h3>
+            </summary>
+            <pre id="launch-token-json"></pre>
+        </details>
+
+        <details id="auth-details-wrapper" style="display:none;">
+            <summary>
+                <h3>Auth Details (for debugging)</h3>
+            </summary>
+            <p>Access Token: <code id="access-token-display"></code></p>
+            <p>Patient ID: <code id="patient-id-display"></code></p>
+            <p>FHIR Server (iss): <code id="fhir-server-display"></code></p>
+            <h4>Full Token Response:</h4>
+            <pre id="token-response-display"></pre>
+        </details>
+
+        <details id="error-info-wrapper" style="display:none; color: red;">
+            <summary>
+                <h3>Error</h3>
+            </summary>
+            <div id="error-info"></div>
+        </details>
+
+<div>
+  <label><input type="checkbox" id="include-patient" checked> Include Patient</label>
+  <label><input type="checkbox" id="include-vitals" checked> Include Vitals</label>
+  <input type="range" id="vitals-count" min="1" max="10" value="3">
+  <span>How many vitals?</span>
+  <label><input type="checkbox" id="include-meds" checked> Include Medications</label>
+  <input type="range" id="meds-count" min="1" max="10" value="3">
+  <span>How many meds?</span>
+</div>
+
 
         <!-- Chat Section -->
-        <details id="chat-section-wrapper" open>
-            <summary>
-                <h2>Chat with AI (OpenAI GPT-3.5/4)</h2>
-            </summary>
-            <div id="chat-history" style="text-align:left; margin-bottom: 1em;"></div>
-            <form id="chat-form" style="display:flex; gap:0.5em; justify-content:center;">
-                <input type="text" id="chat-input" autocomplete="off" style="flex:1;"
-                    placeholder="Type your message...">
-            </form>
-        </details>
+<details id="chat-section-wrapper" style="display:block;">
+  <summary><h2>Chat with AI (OpenAI GPT-3.5/4)</h2></summary>
+  <div id="chat-history" style="text-align:left; margin-bottom: 1em;"></div>
+  <form id="chat-form" style="display:flex;gap:0.5em;justify-content:center;">
+    <input type="text" id="chat-input" autocomplete="off" style="flex:1;" placeholder="Type your message...">
+    <!-- API key field can be removed if you want -->
+  </form>
+</details>
+
+
     </div>
-
-    <details id="patient-info-wrapper" style="display:none;">
-        <summary>
-            <h2>Patient Data</h2>
-        </summary>
-        <div id="patient-info">
-            <ul id="patient-data-list"></ul>
-        </div>
-    </details>
-
-    <details id="vital-signs-info-wrapper" style="display:none;">
-        <summary>
-            <h2>Recent Vital Signs</h2>
-        </summary>
-        <div id="vital-signs-info">
-            <pre id="vital-signs-data"></pre>
-        </div>
-    </details>
-
-    <details id="medications-info-wrapper" style="display:none;">
-        <summary>
-            <h2>Medications</h2>
-        </summary>
-        <div id="medications-info">
-            <table id="medications-table">
-                <thead>
-                    <tr>
-                        <th>Medication</th>
-                        <th>Status</th>
-                        <th>Date Written</th>
-                        <th>Provider</th>
-                        <th>Instructions</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-        </div>
-    </details>
-
-    <details id="launch-token-data-wrapper" style="display:none;">
-        <summary>
-            <h3>Launch Token Info</h3>
-        </summary>
-        <pre id="launch-token-json"></pre>
-    </details>
-
-    <details id="auth-details-wrapper" style="display:none;">
-        <summary>
-            <h3>Auth Details (for debugging)</h3>
-        </summary>
-        <p>Access Token: <code id="access-token-display"></code></p>
-        <p>Patient ID: <code id="patient-id-display"></code></p>
-        <p>FHIR Server (iss): <code id="fhir-server-display"></code></p>
-        <h4>Full Token Response:</h4>
-        <pre id="token-response-display"></pre>
-    </details>
-
-    <details id="error-info-wrapper" style="display:none; color: red;">
-        <summary>
-            <h3>Error</h3>
-        </summary>
-        <div id="error-info"></div>
-    </details>
-
     <script type="module" src="/src/main.js"></script>
-
-
 </body>
 
 </html>
