@@ -335,7 +335,3 @@ if (sessionStorage.getItem('SMART_KEY')) {
   displayError("This app requires an EHR launch or manual configuration.");
   setupChat();
 }
-
-console.log("Patient summary:\n", summarizePatient(lastPatientData));
-console.log("Vitals summary:\n", summarizeVitals(lastVitalsData));
-console.log("Meds summary:\n", summarizeMeds(lastMedicationsData));
