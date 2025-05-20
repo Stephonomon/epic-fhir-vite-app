@@ -9,58 +9,95 @@
 </head>
 
 <body>
-    <div id="app-layout">
-        <!-- Sidebar: Patient/Vitals/Meds -->
-        <aside id="sidebar">
-            <h2>Patient Context</h2>
-            <div id="patient-info-markdown"></div>
-            <hr>
-            <h3>Recent Vitals</h3>
-            <div id="vitals-info-markdown"></div>
-            <hr>
-            <h3>Medications</h3>
-            <div id="medications-markdown"></div>
-            <hr>
-            <div id="sidebar-controls">
-                <label><input type="checkbox" id="include-patient" checked> Patient</label>
-                <label><input type="checkbox" id="include-vitals" checked> Vitals</label>
-                <input type="range" id="vitals-count" min="1" max="10" value="3">
-                <span>Vitals shown</span>
-                <br>
-                <label><input type="checkbox" id="include-meds" checked> Medications</label>
-                <input type="range" id="meds-count" min="1" max="10" value="3">
-                <span>Meds shown</span>
+    <div id="app">
+        <h1>SMART on FHIR App</h1>
+        <div id="loading">Loading...</div>
+
+        <details id="patient-info-wrapper" style="display:none;">
+            <summary>
+                <h2>Patient Data</h2>
+            </summary>
+            <div id="patient-info">
+                <ul id="patient-data-list"></ul>
             </div>
-        </aside>
+        </details>
 
-        <!-- Main Chat/Details Area -->
-        <main id="main-content">
-            <h1>SMART on FHIR Chat</h1>
-            <div id="loading">Loading...</div>
-            <div id="error-info" style="color: red; display: none;"></div>
+        <details id="vital-signs-info-wrapper" style="display:none;">
+            <summary>
+                <h2>Recent Vital Signs</h2>
+            </summary>
+            <div id="vital-signs-info">
+                <pre id="vital-signs-data"></pre>
+            </div>
+        </details>
 
-            <!-- Chat Section -->
-            <section id="chat-section">
-                <div id="chat-history"></div>
-                <form id="chat-form">
-                    <input type="text" id="chat-input" autocomplete="off" placeholder="Type your message..." />
-                </form>
-            </section>
+        <details id="medications-info-wrapper" style="display:none;">
+            <summary>
+                <h2>Medications</h2>
+            </summary>
+            <div id="medications-info">
+                <table id="medications-table">
+                    <thead>
+                        <tr>
+                            <th>Medication</th>
+                            <th>Status</th>
+                            <th>Date Written</th>
+                            <th>Provider</th>
+                            <th>Instructions</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </details>
 
-            <!-- (Optional: Launch/Auth Details for debugging, collapsible) -->
-            <details id="auth-details-wrapper" style="display:none;">
-                <summary><h3>Auth Details (debug)</h3></summary>
-                <p>Access Token: <code id="access-token-display"></code></p>
-                <p>Patient ID: <code id="patient-id-display"></code></p>
-                <p>FHIR Server (iss): <code id="fhir-server-display"></code></p>
-                <h4>Full Token Response:</h4>
-                <pre id="token-response-display"></pre>
-            </details>
-            <details id="launch-token-data-wrapper" style="display:none;">
-                <summary><h3>Launch Token Info</h3></summary>
-                <pre id="launch-token-json"></pre>
-            </details>
-        </main>
+        <details id="launch-token-data-wrapper" style="display:none;">
+            <summary>
+                <h3>Launch Token Info</h3>
+            </summary>
+            <pre id="launch-token-json"></pre>
+        </details>
+
+        <details id="auth-details-wrapper" style="display:none;">
+            <summary>
+                <h3>Auth Details (for debugging)</h3>
+            </summary>
+            <p>Access Token: <code id="access-token-display"></code></p>
+            <p>Patient ID: <code id="patient-id-display"></code></p>
+            <p>FHIR Server (iss): <code id="fhir-server-display"></code></p>
+            <h4>Full Token Response:</h4>
+            <pre id="token-response-display"></pre>
+        </details>
+
+        <details id="error-info-wrapper" style="display:none; color: red;">
+            <summary>
+                <h3>Error</h3>
+            </summary>
+            <div id="error-info"></div>
+        </details>
+
+<div>
+  <label><input type="checkbox" id="include-patient" checked> Include Patient</label>
+  <label><input type="checkbox" id="include-vitals" checked> Include Vitals</label>
+  <input type="range" id="vitals-count" min="1" max="10" value="3">
+  <span>How many vitals?</span>
+  <label><input type="checkbox" id="include-meds" checked> Include Medications</label>
+  <input type="range" id="meds-count" min="1" max="10" value="3">
+  <span>How many meds?</span>
+</div>
+
+
+        <!-- Chat Section -->
+<details id="chat-section-wrapper" style="display:block;">
+  <summary><h2>Chat with AI (OpenAI GPT-3.5/4)</h2></summary>
+  <div id="chat-history" style="text-align:left; margin-bottom: 1em;"></div>
+  <form id="chat-form" style="display:flex;gap:0.5em;justify-content:center;">
+    <input type="text" id="chat-input" autocomplete="off" style="flex:1;" placeholder="Type your message...">
+    <!-- API key field can be removed if you want -->
+  </form>
+</details>
+
+
     </div>
     <script type="module" src="/src/main.js"></script>
 </body>

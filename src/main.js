@@ -33,31 +33,155 @@ function toggleSection(sectionId, show) {
   if (wrapper) wrapper.style.display = show ? 'block' : 'none';
 }
 
-// --- Display Functions: Render Summarizers Markdown ---
 function displayPatientData(data) {
   lastPatientData = data;
-  const container = document.getElementById('patient-info-markdown');
-  if (container) container.innerHTML = marked.parse(summarizePatient(data));
+  toggleSection('patient-info', true);
+  const list = document.getElementById('patient-data-list');
+  list.innerHTML = '';
+
+  const name = data.name?.[0]?.text || `${data.name?.[0]?.given?.join(' ')} ${data.name?.[0]?.family}`;
+  const phone = data.telecom?.find(t => t.system === 'phone')?.value;
+  const email = data.telecom?.find(t => t.system === 'email')?.value;
+  const addr = data.address?.[0];
+  const address = addr
+    ? `${addr.line?.join(' ')} ${addr.city || ''}, ${addr.state || ''} ${addr.postalCode || ''}`
+    : '';
+
+  const fields = [
+    ['Name', name],
+    ['Gender', data.gender],
+    ['Birth Date', data.birthDate],
+    ['ID', data.id],
+    ['Phone', phone],
+    ['Email', email],
+    ['Address', address],
+  ];
+
+  fields.forEach(([label, value]) => {
+    const li = document.createElement('li');
+    li.textContent = `${label}: ${value || 'N/A'}`;
+    list.appendChild(li);
+  });
 }
 
 function displayVitalSigns(data) {
   lastVitalsData = data;
-  const container = document.getElementById('vitals-info-markdown');
-  if (container) container.innerHTML = marked.parse(summarizeVitals(data));
+  toggleSection('vital-signs-info', true);
+  const element = document.getElementById('vital-signs-data');
+  let text = "No vital signs found or an error occurred.";
+
+  if (data?.entry?.length) {
+    text = data.entry.map(entry => {
+      const r = entry.resource;
+      if (!r) return "Malformed entry: no resource found";
+      let line = r.code?.text || r.code?.coding?.[0]?.display || "Unknown Vital";
+      if (r.valueQuantity) {
+        line += `: ${r.valueQuantity.value} ${r.valueQuantity.unit||''}`;
+      } else if (r.component?.length) {
+        line += ':' + r.component.map(c => {
+          const lab = c.code?.text || c.code?.coding?.[0]?.display || "Component";
+          const val = c.valueQuantity ? `${c.valueQuantity.value} ${c.valueQuantity.unit||''}` : 'N/A';
+          return `
+  - ${lab}: ${val}`;
+        }).join('');
+      } else {
+        line += ": N/A";
+      }
+      if (r.effectiveDateTime) {
+        line += ` (Recorded: ${new Date(r.effectiveDateTime).toLocaleString()})`;
+      }
+      return line;
+    }).join('');
+  } else if (data?.total === 0) {
+    text = "No vital signs found for this patient.";
+  }
+
+  element.textContent = text;
 }
 
 function displayMedications(data) {
   lastMedicationsData = data;
-  const container = document.getElementById('medications-markdown');
-  if (container) container.innerHTML = marked.parse(summarizeMeds(data));
+  toggleSection('medications-info', true);
+  const tbody = document.querySelector('#medications-table tbody');
+  tbody.innerHTML = '';
+
+  const entries = (data.entry || []).slice().sort((a, b) => {
+    const da = a.resource.authoredOn ? new Date(a.resource.authoredOn) : 0;
+    const db = b.resource.authoredOn ? new Date(b.resource.authoredOn) : 0;
+    return db - da;
+  });
+
+  entries.forEach(({ resource }) => {
+    const tr = document.createElement('tr');
+    const med = resource.medicationCodeableConcept?.text || resource.medicationReference?.display || 'Unknown';
+    const status = resource.status || 'N/A';
+    const date = resource.authoredOn?.split('T')[0] || 'N/A';
+    const provider = resource.requester?.display || resource.requester?.reference || 'N/A';
+    const instructions = (resource.dosageInstruction || [])
+      .map(di => {
+        if (di.patientInstruction) return di.patientInstruction;
+        if (di.text && di.text.includes(',')) return di.text.split(',')[0].trim() + '.';
+        return di.text || 'N/A';
+      })
+      .join('; ');
+
+    [med, status, date, provider, instructions].forEach(text => {
+      const td = document.createElement('td');
+      td.textContent = text;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
 }
 
-// --- Other unchanged helpers (auth, launch data, error, etc) ---
-function displayAuthDetails(client) { /* ... unchanged ... */ }
-function displayLaunchTokenData(client) { /* ... unchanged ... */ }
-function displayError(message, errorObj = null) { /* ... unchanged ... */ }
+function displayAuthDetails(client) {
+  toggleSection('auth-details', true);
+  const accessEl = document.getElementById('access-token-display');
+  const patientEl = document.getElementById('patient-id-display');
+  const serverEl = document.getElementById('fhir-server-display');
+  const tokenEl = document.getElementById('token-response-display');
 
-// --- Data Fetchers (use fetchResource, unchanged) ---
+  if (accessEl) {
+    const tok = client?.state?.tokenResponse?.access_token;
+    accessEl.textContent = tok ? tok.substring(0, 30) + '...' : 'N/A';
+  }
+  if (patientEl) patientEl.textContent = client?.patient?.id || 'N/A';
+  if (serverEl) serverEl.textContent = client?.state?.serverUrl || 'N/A';
+  if (tokenEl) tokenEl.textContent = client?.state?.tokenResponse
+    ? JSON.stringify(client.state.tokenResponse, null, 2)
+    : 'No token response available.';
+}
+
+function displayLaunchTokenData(client) {
+  const wrapper = document.getElementById('launch-token-data-wrapper');
+  const jsonEl = document.getElementById('launch-token-json');
+  const token = client?.state?.tokenResponse;
+  if (!token) return;
+
+  const filtered = {};
+  Object.keys(token).forEach(key => {
+    if (!['access_token','token_type','expires_in','scope','id_token'].includes(key)) {
+      filtered[key] = token[key];
+    }
+  });
+  if (Object.keys(filtered).length) {
+    wrapper.style.display = 'block';
+    jsonEl.textContent = JSON.stringify(filtered, null, 2);
+  }
+}
+
+function displayError(message, errorObj = null) {
+  showLoading(false);
+  toggleSection('error-info', true);
+  const errEl = document.getElementById('error-info');
+  if (errEl) {
+    errEl.textContent = message + (errorObj ? `
+Details: ${errorObj.stack||errorObj}` : '');
+  }
+  console.error(message, errorObj);
+}
+
+// --- Data Fetchers (use fetchResource) ---
 async function fetchPatientData(client) {
   showLoading(true);
   try {
@@ -71,6 +195,7 @@ async function fetchPatientData(client) {
     showLoading(false);
   }
 }
+
 async function fetchVitalSigns(client) {
   showLoading(true);
   try {
@@ -84,6 +209,7 @@ async function fetchVitalSigns(client) {
     showLoading(false);
   }
 }
+
 async function fetchMedications(client) {
   showLoading(true);
   try {
@@ -98,7 +224,6 @@ async function fetchMedications(client) {
   }
 }
 
-// --- Fetch Buttons (unchanged, but make sure IDs match your containers) ---
 function addFetchButtons(client) {
   const appDiv = document.getElementById('app');
   if (!document.getElementById('fetch-btns-row')) {
@@ -111,6 +236,7 @@ function addFetchButtons(client) {
       <button id="fetch-meds-btn">Fetch Medications</button>
     `;
     appDiv.insertBefore(fetchBtnDiv, appDiv.children[1]);
+
     document.getElementById('fetch-patient-btn').onclick = () => fetchPatientData(client);
     document.getElementById('fetch-vitals-btn').onclick = () => fetchVitalSigns(client);
     document.getElementById('fetch-meds-btn').onclick = () => fetchMedications(client);
@@ -130,11 +256,15 @@ function renderChatHistory() {
     }
   }).join('');
 }
+
 async function sendChatMessage(msg) {
   chatHistory.push({ role: 'user', content: msg });
   renderChatHistory();
+
+  // Typing...
   chatHistory.push({ role: 'assistant', content: '...' });
   renderChatHistory();
+
   const aiResp = await getChatResponse({
     chatHistory: chatHistory.filter(m => m.role !== 'assistant' || m.content !== '...'),
     patient: contextConfig.includePatient ? lastPatientData : null,
@@ -143,10 +273,12 @@ async function sendChatMessage(msg) {
     config: contextConfig,
     openAiKey: OPENAI_API_KEY
   });
+
   chatHistory.pop();
   chatHistory.push(aiResp);
   renderChatHistory();
 }
+
 function setupChat() {
   const chatForm = document.getElementById('chat-form');
   if (!chatForm) return;
@@ -161,8 +293,11 @@ function setupChat() {
   };
 }
 
-// --- SMART Launch/EHR Auth Logic (unchanged) ---
-function isAbsoluteUrl(url) { /* unchanged */ }
+// --- SMART Launch/EHR Auth Logic ---
+function isAbsoluteUrl(url) {
+  return typeof url === 'string' && (url.includes('://') || url.startsWith('//'));
+}
+
 const params = new URLSearchParams(window.location.search);
 const launchToken = params.get('launch');
 const iss = params.get('iss');
@@ -200,3 +335,7 @@ if (sessionStorage.getItem('SMART_KEY')) {
   displayError("This app requires an EHR launch or manual configuration.");
   setupChat();
 }
+
+console.log("Patient summary:\n", summarizePatient(lastPatientData));
+console.log("Vitals summary:\n", summarizeVitals(lastVitalsData));
+console.log("Meds summary:\n", summarizeMeds(lastMedicationsData));
