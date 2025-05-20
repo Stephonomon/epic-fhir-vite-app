@@ -3,6 +3,7 @@ import FHIR from 'fhirclient';
 import { fetchResource } from './fhirClient.js';
 import { getChatResponse } from './openaiChat.js';
 import { summarizePatient, summarizeVitals, summarizeMeds } from './summarizers.js';
+import { marked } from 'marked';
 
 // --- Configuration ---
 const CLIENT_ID = '023dda75-b5e9-4f99-9c0b-dc5704a04164';
@@ -187,6 +188,7 @@ async function fetchPatientData(client) {
     const data = await fetchResource({ client, path: `Patient/${client.patient.id}`, backendUrl: BACKEND_PROXY_URL });
     lastPatientData = data;
     displayPatientData(data);
+    console.log("Patient summary:\n", summarizePatient(lastPatientData));
   } catch (e) {
     displayError(`Failed to fetch patient data: ${e.message}`, e);
   } finally {
@@ -200,6 +202,7 @@ async function fetchVitalSigns(client) {
     const data = await fetchResource({ client, path: 'Observation?category=vital-signs&_sort=-date&_count=10', backendUrl: BACKEND_PROXY_URL });
     lastVitalsData = data;
     displayVitalSigns(data);
+    console.log("Vitals summary:\n", summarizeVitals(lastVitalsData));
   } catch (e) {
     displayError(`Failed to fetch vital signs: ${e.message}`, e);
   } finally {
@@ -213,6 +216,7 @@ async function fetchMedications(client) {
     const data = await fetchResource({ client, path: 'MedicationRequest?_sort=-authoredon&_count=10', backendUrl: BACKEND_PROXY_URL });
     lastMedicationsData = data;
     displayMedications(data);
+    console.log("Meds summary:\n", summarizeMeds(lastMedicationsData));
   } catch (e) {
     displayError(`Failed to fetch medications: ${e.message}`, e);
   } finally {
@@ -243,9 +247,14 @@ function addFetchButtons(client) {
 function renderChatHistory() {
   const chatDiv = document.getElementById('chat-history');
   if (!chatDiv) return;
-  chatDiv.innerHTML = chatHistory.map(
-    m => `<div style="margin-bottom:6px;"><b>${m.role === 'user' ? 'You' : 'AI'}:</b> ${m.content}</div>`
-  ).join('');
+  chatDiv.innerHTML = chatHistory.map(m => {
+    if (m.role === 'user') {
+      return `<div style="margin-bottom:6px;"><b>You:</b> ${m.content}</div>`;
+    } else {
+      // Safely render AI response as Markdown
+      return `<div style="margin-bottom:6px;"><b>AI:</b> ${marked.parse(m.content)}</div>`;
+    }
+  }).join('');
 }
 
 async function sendChatMessage(msg) {

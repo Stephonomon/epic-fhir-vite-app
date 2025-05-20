@@ -15,14 +15,15 @@ export async function getChatResponse({
     config.includeMeds !== false ? summarizeMeds(meds, config.medsCount || 3) : null,
   ].filter(Boolean).join('\n\n');
 
-  const messages = [
+    const messages = [
     {
-      role: "system",
-      content:
-        "You are a helpful clinical assistant. Here is the current patient context from the EHR:\n" + fhirContext
+        role: "system",
+        content:
+        "You are a helpful clinical assistant. Format all your responses using Markdown. Use bold for headings, bullet points for lists, and keep information clear and readable. Here is the current patient context from the EHR:\n" + fhirContext
     },
     ...chatHistory.map(m => ({ role: m.role, content: m.content }))
-  ];
+    ];
+
 
   const url = "https://api.openai.com/v1/chat/completions";
   const headers = {

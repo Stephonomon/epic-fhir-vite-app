@@ -9,9 +9,10 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "vite": "^5.0.0" 
+    "vite": "^5.0.0"
   },
   "dependencies": {
-    "fhirclient": "^2.5.2" 
+    "fhirclient": "^2.5.2",
+    "marked": "^15.0.11"
   }
 }
