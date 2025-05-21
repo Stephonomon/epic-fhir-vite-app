@@ -3,6 +3,7 @@ import FHIR from 'fhirclient';
 import { fetchResource } from './fhirClient.js';
 import { getChatResponse } from './openaiChat.js';
 import { summarizePatient, summarizeVitals, summarizeMeds } from './summarizers.js';
+import { extractPatientInfo, processVitalSigns, processMedications } from './fhirUtils.js';
 import { marked } from 'marked';
 
 // --- Configuration ---
@@ -63,23 +64,17 @@ function displayPatientData(data) {
   toggleSection('patient');
   const list = document.getElementById('patient-data-list');
   list.innerHTML = '';
-
-  const name = data.name?.[0]?.text || `${data.name?.[0]?.given?.join(' ')} ${data.name?.[0]?.family}`;
-  const phone = data.telecom?.find(t => t.system === 'phone')?.value;
-  const email = data.telecom?.find(t => t.system === 'email')?.value;
-  const addr = data.address?.[0];
-  const address = addr
-    ? `${addr.line?.join(' ')} ${addr.city || ''}, ${addr.state || ''} ${addr.postalCode || ''}`
-    : '';
-
+  
+  const patientInfo = extractPatientInfo(data);
+  
   const fields = [
-    ['Name:', name],
-    ['Gender:', data.gender],
-    ['Birth Date:', data.birthDate],
-    ['ID:', data.id],
-    ['Phone:', phone],
-    ['Email:', email],
-    ['Address:', address],
+    ['Name:', patientInfo.name],
+    ['Gender:', patientInfo.gender],
+    ['Birth Date:', patientInfo.birthDate],
+    ['ID:', patientInfo.id],
+    ['Phone:', patientInfo.phone],
+    ['Email:', patientInfo.email],
+    ['Address:', patientInfo.address],
   ];
 
   fields.forEach(([label, value]) => {
@@ -88,7 +83,7 @@ function displayPatientData(data) {
     labelDiv.textContent = label;
     
     const valueDiv = document.createElement('div');
-    valueDiv.textContent = value || 'N/A';
+    valueDiv.textContent = value;
     
     list.appendChild(labelDiv);
     list.appendChild(valueDiv);
@@ -99,50 +94,31 @@ function displayVitalSigns(data) {
   lastVitalsData = data;
   toggleSection('vital-signs');
   const element = document.getElementById('vital-signs-data');
-  let text = "No vital signs found or an error occurred.";
-
-  if (data?.entry?.length) {
-    const vitalsHtml = data.entry.slice(0, contextConfig.vitalsCount).map(entry => {
-      const r = entry.resource;
-      if (!r) return "Malformed entry: no resource found";
-      
-      let vitalName = r.code?.text || r.code?.coding?.[0]?.display || "Unknown Vital";
-      let valueText = '';
-      let dateText = '';
-      
-      if (r.valueQuantity) {
-        valueText = `${r.valueQuantity.value} ${r.valueQuantity.unit||''}`;
-      } else if (r.component?.length) {
-        valueText = r.component.map(c => {
-          const lab = c.code?.text || c.code?.coding?.[0]?.display || "Component";
-          const val = c.valueQuantity ? `${c.valueQuantity.value} ${c.valueQuantity.unit||''}` : 'N/A';
-          return `${lab}: ${val}`;
-        }).join('; ');
-      } else {
-        valueText = "N/A";
-      }
-      
-      if (r.effectiveDateTime) {
-        dateText = new Date(r.effectiveDateTime).toLocaleDateString();
-      }
-      
-      return `<div class="pb-2 border-b border-gray-100 last:border-0">
-        <div class="flex justify-between">
-          <span class="font-medium">${vitalName}</span>
-          <span class="text-gray-500 text-xs">${dateText}</span>
-        </div>
-        <div class="mt-1">
-          <span class="font-medium">${valueText}</span>
-        </div>
-      </div>`;
-    }).join('');
-    
-    element.innerHTML = vitalsHtml;
-  } else if (data?.total === 0) {
-    element.textContent = "No vital signs found for this patient.";
-  } else {
-    element.textContent = text;
+  
+  if (!data?.entry?.length) {
+    element.textContent = data?.total === 0 
+      ? "No vital signs found for this patient." 
+      : "No vital signs found or an error occurred.";
+    return;
   }
+  
+  const processedVitals = processVitalSigns(data, contextConfig.vitalsCount);
+  
+  const vitalsHtml = processedVitals.map(vital => {
+    if (vital.error) return vital.error;
+    
+    return `<div class="pb-2 border-b border-gray-100 last:border-0">
+      <div class="flex justify-between">
+        <span class="font-medium">${vital.name}</span>
+        <span class="text-gray-500 text-xs">${vital.date}</span>
+      </div>
+      <div class="mt-1">
+        <span class="font-medium">${vital.value}</span>
+      </div>
+    </div>`;
+  }).join('');
+  
+  element.innerHTML = vitalsHtml;
 }
 
 function displayMedications(data) {
@@ -151,13 +127,14 @@ function displayMedications(data) {
   const container = document.getElementById('medications-container');
   container.innerHTML = '';
 
-  const entries = (data.entry || []).slice(0, contextConfig.medsCount).sort((a, b) => {
-    const da = a.resource.authoredOn ? new Date(a.resource.authoredOn) : 0;
-    const db = b.resource.authoredOn ? new Date(b.resource.authoredOn) : 0;
-    return db - da;
-  });
-
-  entries.forEach(({ resource }) => {
+  if (!data?.entry?.length) {
+    container.textContent = "No medications found for this patient.";
+    return;
+  }
+  
+  const processedMeds = processMedications(data, contextConfig.medsCount);
+  
+  processedMeds.forEach(med => {
     const medItem = document.createElement('div');
     medItem.className = 'med-item';
     
@@ -165,21 +142,18 @@ function displayMedications(data) {
     
     const medName = document.createElement('div');
     medName.className = 'med-name';
-    medName.textContent = resource.medicationCodeableConcept?.text || resource.medicationReference?.display || 'Unknown';
+    medName.textContent = med.name;
     
     const medDetails = document.createElement('div');
     medDetails.className = 'med-details';
-    const dose = resource.dosageInstruction?.[0]?.doseAndRate?.[0]?.doseQuantity?.value || '';
-    const unit = resource.dosageInstruction?.[0]?.doseAndRate?.[0]?.doseQuantity?.unit || '';
-    const frequency = resource.dosageInstruction?.[0]?.timing?.code?.text || '';
-    medDetails.textContent = `${dose}${unit} - ${frequency}`;
+    medDetails.textContent = med.dosage.formatted;
     
     medInfo.appendChild(medName);
     medInfo.appendChild(medDetails);
     
     const medStatus = document.createElement('span');
-    medStatus.className = `med-status ${resource.status === 'active' ? 'status-active' : 'status-inactive'}`;
-    medStatus.textContent = resource.status || 'N/A';
+    medStatus.className = `med-status ${med.status === 'active' ? 'status-active' : 'status-inactive'}`;
+    medStatus.textContent = med.status;
     
     medItem.appendChild(medInfo);
     medItem.appendChild(medStatus);
