@@ -17,11 +17,13 @@ export function extractPatientInfo(patient, context = null) {
     ? `${addr.line?.join(' ')} ${addr.city || ''}, ${addr.state || ''} ${addr.postalCode || ''}`
     : '';
   
-  // Get PAT_ID from context if available, otherwise use FHIR resource ID
-  const patId = context?.tokenResponse?.pat_id || patient.id || 'N/A';
+  // Get PAT_ID from context
+  // Need to check both context.state.tokenResponse and direct context.tokenResponse
+  const tokenResp = context?.state?.tokenResponse || context?.tokenResponse;
+  const patId = tokenResp?.pat_id || patient.id || 'N/A';
   
-  // Get CSN from context if available
-  const csn = context?.tokenResponse?.csn || 'N/A';
+  // Get CSN from context
+  const csn = tokenResp?.csn || 'N/A';
     
   return {
     name,
@@ -131,6 +133,136 @@ export function processMedications(meds, count = 10) {
         formatted: `${dose}${unit}${frequency ? ' - ' + frequency : ''}`
       },
       rawResource: resource // Keep the raw resource for any additional processing
+    };
+  });
+}
+
+/**
+ * Process encounter resources
+ * @param {Object} encounters - FHIR Bundle containing Encounter resources
+ * @param {number} count - Maximum number of encounters to process
+ * @returns {Array} Processed encounter data
+ */
+export function processEncounters(encounters, count = 10) {
+  if (!encounters?.entry?.length) return [];
+  
+  // Sort encounters by date (newest first)
+  const entries = (encounters.entry || []).slice().sort((a, b) => {
+    const da = a.resource.period?.start ? new Date(a.resource.period.start) : 0;
+    const db = b.resource.period?.start ? new Date(b.resource.period.start) : 0;
+    return db - da;
+  });
+  
+  return entries.slice(0, count).map(({ resource }) => {
+    // Extract key encounter information
+    const type = resource.type?.[0]?.text || 
+                resource.type?.[0]?.coding?.[0]?.display || 'Unknown';
+    
+    const status = resource.status || 'N/A';
+    
+    // Format dates
+    let startDate = 'N/A';
+    let endDate = 'N/A';
+    let formattedPeriod = 'N/A';
+    
+    if (resource.period?.start) {
+      startDate = new Date(resource.period.start).toLocaleDateString();
+      if (resource.period?.end) {
+        endDate = new Date(resource.period.end).toLocaleDateString();
+        if (startDate === endDate) {
+          formattedPeriod = startDate;
+        } else {
+          formattedPeriod = `${startDate} - ${endDate}`;
+        }
+      } else {
+        formattedPeriod = `${startDate} (ongoing)`;
+      }
+    }
+    
+    // Get provider
+    const provider = resource.participant?.[0]?.individual?.display || 'N/A';
+    
+    // Get location
+    const location = resource.location?.[0]?.location?.display || 'N/A';
+    
+    // Get service provider/organization
+    const serviceProvider = resource.serviceProvider?.display || 'N/A';
+    
+    // Get class
+    const encounterClass = resource.class?.display || resource.class?.code || 'N/A';
+    
+    return {
+      id: resource.id,
+      type,
+      status,
+      period: {
+        start: startDate,
+        end: endDate,
+        formatted: formattedPeriod
+      },
+      provider,
+      location,
+      serviceProvider,
+      class: encounterClass,
+      rawResource: resource // Keep the raw resource for additional processing
+    };
+  });
+}
+
+/**
+ * Process condition resources
+ * @param {Object} conditions - FHIR Bundle containing Condition resources
+ * @param {number} count - Maximum number of conditions to process
+ * @returns {Array} Processed condition data
+ */
+export function processConditions(conditions, count = 10) {
+  if (!conditions?.entry?.length) return [];
+  
+  // Sort conditions by date (newest first)
+  const entries = (conditions.entry || []).slice().sort((a, b) => {
+    const da = a.resource.recordedDate ? new Date(a.resource.recordedDate) : 0;
+    const db = b.resource.recordedDate ? new Date(b.resource.recordedDate) : 0;
+    return db - da;
+  });
+  
+  return entries.slice(0, count).map(({ resource }) => {
+    // Extract key condition information
+    const code = resource.code?.text || 
+                resource.code?.coding?.[0]?.display || 'Unknown';
+    
+    // Get clinical status
+    const clinicalStatus = resource.clinicalStatus?.coding?.[0]?.display || 
+                         resource.clinicalStatus?.text || 'N/A';
+    
+    // Get verification status
+    const verificationStatus = resource.verificationStatus?.coding?.[0]?.display || 
+                             resource.verificationStatus?.text || 'N/A';
+    
+    // Get category (problem, health-concern, etc.)
+    const categories = resource.category?.map(cat => 
+      cat.coding?.[0]?.display || cat.text || 'Unknown'
+    ) || ['Unknown'];
+    
+    // Get onset date
+    const onsetDate = resource.onsetDateTime ? 
+                    new Date(resource.onsetDateTime).toLocaleDateString() : 
+                    'N/A';
+    
+    // Get recorded date
+    const recordedDate = resource.recordedDate ? 
+                      new Date(resource.recordedDate).toLocaleDateString() : 
+                      'N/A';
+    
+    return {
+      id: resource.id,
+      code,
+      clinicalStatus,
+      verificationStatus,
+      categories,
+      category: categories.join(', '), // For easier display
+      onsetDate,
+      recordedDate,
+      rawResource: resource // Keep the raw resource for additional processing
     };
   });
 }

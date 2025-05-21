@@ -6,26 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Epic FHIR Vite App</title>
     <link rel="stylesheet" href="/src/style.css" />
-    <style>
-        /* Add basic icon styles */
-        .icon {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            margin-right: 0.5rem;
-        }
-        .icon-sm {
-            width: 14px;
-            height: 14px;
-        }
-        .icon-lg {
-            width: 20px;
-            height: 20px;
-        }
-        .rotate-180 {
-            transform: rotate(180deg);
-        }
-    </style>
 </head>
 
 <body>
@@ -64,6 +44,20 @@
                     <span class="flex items-center text-sm">
                         <span class="icon">💊</span>
                         <span>Medications</span>
+                    </span>
+                </div>
+                <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-encounters">
+                    <span id="encounters-checkbox" class="text-blue-500 mr-2">☑️</span>
+                    <span class="flex items-center text-sm">
+                        <span class="icon">🏥</span>
+                        <span>Encounters</span>
+                    </span>
+                </div>
+                <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-conditions">
+                    <span id="conditions-checkbox" class="text-blue-500 mr-2">☑️</span>
+                    <span class="flex items-center text-sm">
+                        <span class="icon">🩺</span>
+                        <span>Problems</span>
                     </span>
                 </div>
             </div>
@@ -118,7 +112,35 @@
                     <span class="text-gray-500 transition-transform">▼</span>
                 </div>
                 <div id="medications-info" class="p-3 text-sm bg-white">
-                    <div class="space-y-2" id="medications-container"></div>
+                    <div id="medications-container" class="space-y-2"></div>
+                </div>
+            </div>
+
+            <!-- Encounters Section -->
+            <div id="encounters-info-wrapper" class="border-b border-gray-200" style="display:none;">
+                <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100">
+                    <div class="flex items-center">
+                        <span class="icon">🏥</span>
+                        <span class="ml-2 text-sm font-medium">Encounters</span>
+                    </div>
+                    <span class="text-gray-500 transition-transform">▼</span>
+                </div>
+                <div id="encounters-info" class="p-3 text-sm bg-white">
+                    <div id="encounters-container" class="space-y-2"></div>
+                </div>
+            </div>
+
+            <!-- Conditions/Problems Section -->
+            <div id="conditions-info-wrapper" class="border-b border-gray-200" style="display:none;">
+                <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100">
+                    <div class="flex items-center">
+                        <span class="icon">🩺</span>
+                        <span class="ml-2 text-sm font-medium">Problems</span>
+                    </div>
+                    <span class="text-gray-500 transition-transform">▼</span>
+                </div>
+                <div id="conditions-info" class="p-3 text-sm bg-white">
+                    <div id="conditions-container" class="space-y-2"></div>
                 </div>
             </div>
         </div>

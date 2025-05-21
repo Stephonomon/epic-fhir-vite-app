@@ -1,5 +1,11 @@
 // src/summarizers.js
-import { extractPatientInfo, processVitalSigns, processMedications } from './fhirUtils.js';
+import { 
+  extractPatientInfo, 
+  processVitalSigns, 
+  processMedications,
+  processEncounters,
+  processConditions
+} from './fhirUtils.js';
 
 export function summarizePatient(patient, context = null) {
   if (!patient) return "No patient data.";
@@ -49,6 +55,42 @@ export function summarizeMeds(meds, count = 10) {
       `Date Written: ${med.date}`,
       `Provider: ${med.provider}`,
       `Instructions: ${med.instructions}`
+    ].join(' | ');
+  });
+  
+  return summary.join('\n');
+}
+
+export function summarizeEncounters(encounters, count = 5) {
+  if (!encounters?.entry?.length) return "No encounter data available.";
+  
+  const processedEncounters = processEncounters(encounters, count);
+  
+  const summary = processedEncounters.map(encounter => {
+    return [
+      `Encounter: ${encounter.type || 'Unknown'} (${encounter.class})`,
+      `Date: ${encounter.period.formatted}`,
+      `Status: ${encounter.status}`,
+      `Provider: ${encounter.provider}`,
+      `Location: ${encounter.location}`
+    ].join(' | ');
+  });
+  
+  return summary.join('\n');
+}
+
+export function summarizeConditions(conditions, count = 5) {
+  if (!conditions?.entry?.length) return "No problem list or conditions available.";
+  
+  const processedConditions = processConditions(conditions, count);
+  
+  const summary = processedConditions.map(condition => {
+    return [
+      `Problem: ${condition.code}`,
+      `Status: ${condition.clinicalStatus}`,
+      `Category: ${condition.category}`,
+      `Onset: ${condition.onsetDate}`,
+      `Recorded: ${condition.recordedDate}`
     ].join(' | ');
   });
   

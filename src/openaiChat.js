@@ -1,19 +1,29 @@
 // src/openaiChat.js
-import { summarizePatient, summarizeVitals, summarizeMeds } from './summarizers.js';
+import { 
+  summarizePatient, 
+  summarizeVitals, 
+  summarizeMeds, 
+  summarizeEncounters, 
+  summarizeConditions 
+} from './summarizers.js';
 
 export async function getChatResponse({
   chatHistory,
   patient,
   vitals,
   meds,
+  encounters,
+  conditions,
   config,
   openAiKey,
-  smartContext // Add SMART context parameter
+  smartContext
 }) {
   const fhirContext = [
     config.includePatient !== false ? summarizePatient(patient, smartContext) : null,
     config.includeVitals !== false ? summarizeVitals(vitals, config.vitalsCount || 3) : null,
     config.includeMeds !== false ? summarizeMeds(meds, config.medsCount || 3) : null,
+    config.includeEncounters !== false ? summarizeEncounters(encounters, config.encounterCount || 3) : null,
+    config.includeConditions !== false ? summarizeConditions(conditions, config.conditionCount || 3) : null
   ].filter(Boolean).join('\n\n');
 
   const messages = [
@@ -28,8 +38,9 @@ export async function getChatResponse({
   // Add additional context information if available
   if (smartContext?.state?.tokenResponse) {
     // Get CSN (Encounter ID) and PAT_ID from context
-    const csn = smartContext.state.tokenResponse.csn;
-    const patId = smartContext.state.tokenResponse.pat_id;
+    const tokenResp = smartContext?.state?.tokenResponse || smartContext?.tokenResponse;
+    const csn = tokenResp?.csn;
+    const patId = tokenResp?.pat_id;
     
     if (csn || patId) {
       // Add a note about additional Epic context to the system message

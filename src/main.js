@@ -2,8 +2,20 @@ import './style.css';
 import FHIR from 'fhirclient';
 import { fetchResource } from './fhirClient.js';
 import { getChatResponse } from './openaiChat.js';
-import { summarizePatient, summarizeVitals, summarizeMeds } from './summarizers.js';
-import { extractPatientInfo, processVitalSigns, processMedications } from './fhirUtils.js';
+import { 
+  summarizePatient, 
+  summarizeVitals, 
+  summarizeMeds,
+  summarizeEncounters,
+  summarizeConditions
+} from './summarizers.js';
+import { 
+  extractPatientInfo, 
+  processVitalSigns, 
+  processMedications,
+  processEncounters,
+  processConditions
+} from './fhirUtils.js';
 import { marked } from 'marked';
 
 // --- Configuration ---
@@ -16,6 +28,8 @@ const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 let lastPatientData = null;
 let lastVitalsData = null;
 let lastMedicationsData = null;
+let lastEncounterData = null;
+let lastConditionData = null;
 let smartClientContext = null; // Store the SMART client context
 
 // --- UI & Chat State ---
@@ -23,9 +37,13 @@ let chatHistory = [];
 let contextConfig = { 
   vitalsCount: 3, 
   medsCount: 3, 
+  encounterCount: 3,
+  conditionCount: 3,
   includePatient: true, 
   includeVitals: true, 
-  includeMeds: true 
+  includeMeds: true,
+  includeEncounters: true,
+  includeConditions: true
 };
 let expandedSection = 'patient'; // Default expanded section
 let showSettings = false;
@@ -163,6 +181,86 @@ function displayMedications(data) {
   });
 }
 
+function displayEncounters(data) {
+  lastEncounterData = data;
+  toggleSection('encounters');
+  const container = document.getElementById('encounters-container');
+  container.innerHTML = '';
+
+  if (!data?.entry?.length) {
+    container.textContent = "No encounter data found for this patient.";
+    return;
+  }
+  
+  const processedEncounters = processEncounters(data, contextConfig.encounterCount);
+  
+  processedEncounters.forEach(encounter => {
+    const encounterItem = document.createElement('div');
+    encounterItem.className = 'encounter-item';
+    
+    const encounterInfo = document.createElement('div');
+    
+    const encounterType = document.createElement('div');
+    encounterType.className = 'encounter-type';
+    encounterType.textContent = encounter.type;
+    
+    const encounterDetails = document.createElement('div');
+    encounterDetails.className = 'encounter-details';
+    encounterDetails.textContent = `${encounter.period.formatted} | ${encounter.location}`;
+    
+    encounterInfo.appendChild(encounterType);
+    encounterInfo.appendChild(encounterDetails);
+    
+    const encounterStatus = document.createElement('span');
+    encounterStatus.className = `encounter-status ${encounter.status === 'finished' ? 'status-complete' : 'status-active'}`;
+    encounterStatus.textContent = encounter.status;
+    
+    encounterItem.appendChild(encounterInfo);
+    encounterItem.appendChild(encounterStatus);
+    container.appendChild(encounterItem);
+  });
+}
+
+function displayConditions(data) {
+  lastConditionData = data;
+  toggleSection('conditions');
+  const container = document.getElementById('conditions-container');
+  container.innerHTML = '';
+
+  if (!data?.entry?.length) {
+    container.textContent = "No problem list or conditions found for this patient.";
+    return;
+  }
+  
+  const processedConditions = processConditions(data, contextConfig.conditionCount);
+  
+  processedConditions.forEach(condition => {
+    const conditionItem = document.createElement('div');
+    conditionItem.className = 'condition-item';
+    
+    const conditionInfo = document.createElement('div');
+    
+    const conditionName = document.createElement('div');
+    conditionName.className = 'condition-name';
+    conditionName.textContent = condition.code;
+    
+    const conditionDetails = document.createElement('div');
+    conditionDetails.className = 'condition-details';
+    conditionDetails.textContent = `${condition.onsetDate} | ${condition.category}`;
+    
+    conditionInfo.appendChild(conditionName);
+    conditionInfo.appendChild(conditionDetails);
+    
+    const conditionStatus = document.createElement('span');
+    conditionStatus.className = `condition-status ${condition.clinicalStatus.toLowerCase().includes('active') ? 'status-active' : 'status-inactive'}`;
+    conditionStatus.textContent = condition.clinicalStatus;
+    
+    conditionItem.appendChild(conditionInfo);
+    conditionItem.appendChild(conditionStatus);
+    container.appendChild(conditionItem);
+  });
+}
+
 function displayAuthDetails(client) {
   smartClientContext = client; // Store client context globally
   
@@ -235,15 +333,21 @@ function setupUIListeners() {
     const patientCheckbox = document.getElementById('patient-checkbox');
     const vitalsCheckbox = document.getElementById('vitals-checkbox');
     const medsCheckbox = document.getElementById('meds-checkbox');
+    const encountersCheckbox = document.getElementById('encounters-checkbox');
+    const conditionsCheckbox = document.getElementById('conditions-checkbox');
     
     if (patientCheckbox) patientCheckbox.textContent = contextConfig.includePatient ? '☑️' : '☐';
     if (vitalsCheckbox) vitalsCheckbox.textContent = contextConfig.includeVitals ? '☑️' : '☐';
     if (medsCheckbox) medsCheckbox.textContent = contextConfig.includeMeds ? '☑️' : '☐';
+    if (encountersCheckbox) encountersCheckbox.textContent = contextConfig.includeEncounters ? '☑️' : '☐';
+    if (conditionsCheckbox) conditionsCheckbox.textContent = contextConfig.includeConditions ? '☑️' : '☐';
   }
   
   const patientToggle = document.getElementById('toggle-patient');
   const vitalsToggle = document.getElementById('toggle-vitals');
   const medsToggle = document.getElementById('toggle-meds');
+  const encountersToggle = document.getElementById('toggle-encounters');
+  const conditionsToggle = document.getElementById('toggle-conditions');
   
   if (patientToggle) {
     patientToggle.addEventListener('click', () => {
@@ -262,6 +366,20 @@ function setupUIListeners() {
   if (medsToggle) {
     medsToggle.addEventListener('click', () => {
       contextConfig.includeMeds = !contextConfig.includeMeds;
+      updateCheckboxDisplay();
+    });
+  }
+  
+  if (encountersToggle) {
+    encountersToggle.addEventListener('click', () => {
+      contextConfig.includeEncounters = !contextConfig.includeEncounters;
+      updateCheckboxDisplay();
+    });
+  }
+  
+  if (conditionsToggle) {
+    conditionsToggle.addEventListener('click', () => {
+      contextConfig.includeConditions = !contextConfig.includeConditions;
       updateCheckboxDisplay();
     });
   }
@@ -319,6 +437,34 @@ async function fetchMedications(client) {
   }
 }
 
+async function fetchEncounters(client) {
+  showLoading(true);
+  try {
+    const data = await fetchResource({ client, path: 'Encounter?_sort=-date&_count=10', backendUrl: BACKEND_PROXY_URL });
+    lastEncounterData = data;
+    displayEncounters(data);
+    console.log("Encounters summary:\n", summarizeEncounters(lastEncounterData));
+  } catch (e) {
+    displayError(`Failed to fetch encounters: ${e.message}`, e);
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function fetchConditions(client) {
+  showLoading(true);
+  try {
+    const data = await fetchResource({ client, path: 'Condition?_sort=-date&_count=10', backendUrl: BACKEND_PROXY_URL });
+    lastConditionData = data;
+    displayConditions(data);
+    console.log("Conditions summary:\n", summarizeConditions(lastConditionData));
+  } catch (e) {
+    displayError(`Failed to fetch conditions: ${e.message}`, e);
+  } finally {
+    showLoading(false);
+  }
+}
+
 // --- Chat Integration ---
 function setupChat() {
   const chatInput = document.getElementById('chat-input');
@@ -345,6 +491,8 @@ function setupChat() {
         patient: contextConfig.includePatient ? lastPatientData : null,
         vitals: contextConfig.includeVitals ? lastVitalsData : null,
         meds: contextConfig.includeMeds ? lastMedicationsData : null,
+        encounters: contextConfig.includeEncounters ? lastEncounterData : null,
+        conditions: contextConfig.includeConditions ? lastConditionData : null,
         config: contextConfig,
         openAiKey: OPENAI_API_KEY,
         smartContext: smartClientContext // Pass SMART context to chat
@@ -401,6 +549,8 @@ function init() {
         if (client.patient?.id) {
           await fetchVitalSigns(client);
           await fetchMedications(client);
+          await fetchEncounters(client);
+          await fetchConditions(client);
         }
         setupChat();
       })
@@ -412,7 +562,7 @@ function init() {
       showLoading(true);
       FHIR.oauth2.authorize({
         client_id: CLIENT_ID,
-        scope: 'launch launch/patient patient/*.read observation/*.read openid fhirUser ' +
+        scope: 'launch launch/patient patient/*.read observation/*.read medication/*.read encounter/*.read condition/*.read openid fhirUser ' +
                'context-user context-fhirUser context-enc_date context-user_ip context-syslogin ' +
                'context-user_timestamp context-workstation_id context-csn context-pat_id',
         redirect_uri: APP_REDIRECT_URI,
