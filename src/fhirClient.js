@@ -5,8 +5,19 @@ export async function fetchResource({ client, path, backendUrl }) {
   }
   const serverUrl = client.state.serverUrl;
   let url = `${backendUrl}/${path}`;
-  const sep = url.includes('?') ? '&' : '?';
-  url += `${sep}patient=${client.patient.id}&targetFhirServer=${encodeURIComponent(serverUrl)}`;
+  
+  // Check if the path already includes a patient parameter
+  // This handles cases where we need to use patient=Patient/[id] format
+  if (!path.includes('patient=')) {
+    const sep = url.includes('?') ? '&' : '?';
+    url += `${sep}patient=${client.patient.id}`;
+  }
+  
+  // Always append the target FHIR server
+  if (!url.includes('targetFhirServer=')) {
+    const sep = url.includes('?') ? '&' : '?';
+    url += `${sep}targetFhirServer=${encodeURIComponent(serverUrl)}`;
+  }
 
   const resp = await fetch(url, {
     headers: {

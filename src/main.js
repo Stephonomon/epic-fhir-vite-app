@@ -299,6 +299,7 @@ function displayAuthDetails(client) {
     console.log("PAT_ID:", client.state.tokenResponse.pat_id);
     console.log("CSN:", client.state.tokenResponse.csn);
     console.log("Scopes in access token:", client.state.tokenResponse.scope);
+    
 
   }
 }
@@ -469,48 +470,37 @@ async function fetchEncounters(client) {
 async function fetchConditions(client) {
   showLoading(true);
   try {
-    // Based on Epic documentation, we need to use correct path for problem list
-    // We'll try several approaches in order of likelihood to work
+    // Use the correct patient reference format: Patient/[id]
+    const patientReference = `Patient/${client.patient.id}`;
     
-    // 1. First try: Standard FHIR approach with category parameter
+    // Update the path to use patient=[Patient reference] instead of just the ID
     const data = await fetchResource({ 
       client, 
-      path: 'Condition?category=problem-list-item&_count=10', 
+      path: `Condition?patient=${encodeURIComponent(patientReference)}&_count=10`, 
       backendUrl: BACKEND_PROXY_URL 
     }).catch(async (firstError) => {
       console.warn("First attempt failed:", firstError.message);
       
-      // 2. Second try: With explicit system as shown in sample
+      // Try with category parameter if the first attempt fails
       try {
         return await fetchResource({ 
           client, 
-          path: 'Condition?category=http://terminology.hl7.org/CodeSystem/condition-category|problem-list-item&_count=10', 
+          path: `Condition?patient=${encodeURIComponent(patientReference)}&category=problem-list-item&_count=10`, 
           backendUrl: BACKEND_PROXY_URL 
         });
       } catch (secondError) {
         console.warn("Second attempt failed:", secondError.message);
         
-        // 3. Third try: Just a basic Condition query
+        // Try with clinical-status parameter if the second attempt fails
         try {
           return await fetchResource({ 
             client, 
-            path: 'Condition?_count=10', 
+            path: `Condition?patient=${encodeURIComponent(patientReference)}&clinical-status=active&_count=10`, 
             backendUrl: BACKEND_PROXY_URL 
           });
         } catch (thirdError) {
           console.warn("Third attempt failed:", thirdError.message);
-          
-          // 4. Fourth try: Using clinical-status filter
-          try {
-            return await fetchResource({ 
-              client, 
-              path: 'Condition?clinical-status=active&_count=10', 
-              backendUrl: BACKEND_PROXY_URL 
-            });
-          } catch (fourthError) {
-            console.warn("Fourth attempt failed:", fourthError.message);
-            throw firstError; // Re-throw original error if all attempts fail
-          }
+          throw firstError; // Re-throw original error if all attempts fail
         }
       }
     });
