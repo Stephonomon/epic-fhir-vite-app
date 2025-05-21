@@ -298,6 +298,8 @@ function displayAuthDetails(client) {
     console.log("Patient ID:", client.patient?.id);
     console.log("PAT_ID:", client.state.tokenResponse.pat_id);
     console.log("CSN:", client.state.tokenResponse.csn);
+    console.log("Scopes in access token:", client.state.tokenResponse.scope);
+
   }
 }
 
