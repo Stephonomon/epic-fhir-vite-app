@@ -1,16 +1,17 @@
 // src/summarizers.js
 import { extractPatientInfo, processVitalSigns, processMedications } from './fhirUtils.js';
 
-export function summarizePatient(patient) {
+export function summarizePatient(patient, context = null) {
   if (!patient) return "No patient data.";
   
-  const patientInfo = extractPatientInfo(patient);
+  const patientInfo = extractPatientInfo(patient, context);
   
   return [
     `Name: ${patientInfo.name}`,
     `Gender: ${patientInfo.gender}`,
     `Birth Date: ${patientInfo.birthDate}`,
-    `ID: ${patientInfo.id}`,
+    `Patient ID: ${patientInfo.patId}`, // Use patId instead of FHIR ID
+    `CSN: ${patientInfo.csn}`, // Add CSN from context
     `Phone: ${patientInfo.phone}`,
     `Email: ${patientInfo.email}`,
     `Address: ${patientInfo.address}`

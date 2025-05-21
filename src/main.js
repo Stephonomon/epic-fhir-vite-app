@@ -16,6 +16,7 @@ const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 let lastPatientData = null;
 let lastVitalsData = null;
 let lastMedicationsData = null;
+let smartClientContext = null; // Store the SMART client context
 
 // --- UI & Chat State ---
 let chatHistory = [];
@@ -59,19 +60,20 @@ function toggleSection(sectionId) {
   }
 }
 
-function displayPatientData(data) {
+function displayPatientData(data, clientContext) {
   lastPatientData = data;
   toggleSection('patient');
   const list = document.getElementById('patient-data-list');
   list.innerHTML = '';
   
-  const patientInfo = extractPatientInfo(data);
+  const patientInfo = extractPatientInfo(data, clientContext);
   
   const fields = [
     ['Name:', patientInfo.name],
     ['Gender:', patientInfo.gender],
     ['Birth Date:', patientInfo.birthDate],
-    ['ID:', patientInfo.id],
+    ['Patient ID:', patientInfo.patId], // Show PAT_ID instead of FHIR ID
+    ['CSN:', patientInfo.csn], // Show CSN
     ['Phone:', patientInfo.phone],
     ['Email:', patientInfo.email],
     ['Address:', patientInfo.address],
@@ -162,6 +164,8 @@ function displayMedications(data) {
 }
 
 function displayAuthDetails(client) {
+  smartClientContext = client; // Store client context globally
+  
   const accessEl = document.getElementById('access-token-display');
   const patientEl = document.getElementById('patient-id-display');
   const serverEl = document.getElementById('fhir-server-display');
@@ -176,6 +180,14 @@ function displayAuthDetails(client) {
   if (tokenEl) tokenEl.textContent = client?.state?.tokenResponse
     ? JSON.stringify(client.state.tokenResponse, null, 2)
     : 'No token response available.';
+  
+  // Log context information for debugging
+  console.log("SMART Client Context:", client);
+  if (client?.state?.tokenResponse) {
+    console.log("Patient ID:", client.patient?.id);
+    console.log("PAT_ID:", client.state.tokenResponse.pat_id);
+    console.log("CSN:", client.state.tokenResponse.csn);
+  }
 }
 
 function displayLaunchTokenData(client) {
@@ -270,8 +282,8 @@ async function fetchPatientData(client) {
   try {
     const data = await fetchResource({ client, path: `Patient/${client.patient.id}`, backendUrl: BACKEND_PROXY_URL });
     lastPatientData = data;
-    displayPatientData(data);
-    console.log("Patient summary:\n", summarizePatient(lastPatientData));
+    displayPatientData(data, client);
+    console.log("Patient summary:\n", summarizePatient(lastPatientData, client));
   } catch (e) {
     displayError(`Failed to fetch patient data: ${e.message}`, e);
   } finally {
@@ -334,7 +346,8 @@ function setupChat() {
         vitals: contextConfig.includeVitals ? lastVitalsData : null,
         meds: contextConfig.includeMeds ? lastMedicationsData : null,
         config: contextConfig,
-        openAiKey: OPENAI_API_KEY
+        openAiKey: OPENAI_API_KEY,
+        smartContext: smartClientContext // Pass SMART context to chat
       });
       
       responseText.innerHTML = marked.parse(aiResp.content);
@@ -378,6 +391,10 @@ function init() {
     FHIR.oauth2.ready()
       .then(async client => {
         window.smartClient = client;
+        
+        // Store client context globally
+        smartClientContext = client;
+        
         await fetchPatientData(client);
         displayAuthDetails(client);
         displayLaunchTokenData(client);
@@ -395,7 +412,9 @@ function init() {
       showLoading(true);
       FHIR.oauth2.authorize({
         client_id: CLIENT_ID,
-        scope: 'launch launch/patient patient/*.read observation/*.read openid fhirUser context-user context-fhirUser context-enc_date context-user_ip context-syslogin context-user_timestamp context-workstation_id',
+        scope: 'launch launch/patient patient/*.read observation/*.read openid fhirUser ' +
+               'context-user context-fhirUser context-enc_date context-user_ip context-syslogin ' +
+               'context-user_timestamp context-workstation_id context-csn context-pat_id',
         redirect_uri: APP_REDIRECT_URI,
         iss,
         launch: launchToken,

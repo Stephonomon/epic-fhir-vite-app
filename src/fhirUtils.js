@@ -2,9 +2,11 @@
 // Utility functions for working with FHIR resources
 
 /**
- * Extract patient information from FHIR patient resource
+ * Extract patient information from FHIR patient resource and SMART client context
+ * @param {Object} patient - FHIR Patient resource
+ * @param {Object} context - Optional SMART client context containing additional information
  */
-export function extractPatientInfo(patient) {
+export function extractPatientInfo(patient, context = null) {
   if (!patient) return null;
   
   const name = patient.name?.[0]?.text || `${patient.name?.[0]?.given?.join(' ')} ${patient.name?.[0]?.family}`;
@@ -14,12 +16,20 @@ export function extractPatientInfo(patient) {
   const address = addr
     ? `${addr.line?.join(' ')} ${addr.city || ''}, ${addr.state || ''} ${addr.postalCode || ''}`
     : '';
+  
+  // Get PAT_ID from context if available, otherwise use FHIR resource ID
+  const patId = context?.tokenResponse?.pat_id || patient.id || 'N/A';
+  
+  // Get CSN from context if available
+  const csn = context?.tokenResponse?.csn || 'N/A';
     
   return {
     name,
     gender: patient.gender || 'N/A',
     birthDate: patient.birthDate || 'N/A',
-    id: patient.id || 'N/A',
+    id: patient.id || 'N/A', // Keep original FHIR ID
+    patId, // Add Epic-specific PAT_ID
+    csn,   // Add Epic-specific CSN
     phone: phone || 'N/A',
     email: email || 'N/A',
     address: address || 'N/A'
