@@ -242,7 +242,9 @@ pre {
   color: #1e40af;
 }
 
-/* Condition container styling */
+/* Add these styles to your style.css file */
+
+/* Problem List (Conditions) styling */
 #conditions-container .condition-item {
   display: flex;
   justify-content: space-between;
@@ -272,4 +274,18 @@ pre {
 #conditions-container .status-inactive {
   background-color: #f3f4f6;
   color: #1f2937;
+}
+
+/* Info message styling */
+.info-message {
+  padding: 1rem;
+  background-color: #f9fafb;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+  color: #6b7280;
+  text-align: center;
+}
+
+.info-message p {
+  margin: 0.5rem 0;
 }

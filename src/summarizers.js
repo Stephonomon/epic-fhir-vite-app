@@ -80,18 +80,35 @@ export function summarizeEncounters(encounters, count = 5) {
 }
 
 export function summarizeConditions(conditions, count = 5) {
-  if (!conditions?.entry?.length) return "No problem list or conditions available.";
+  if (!conditions?.entry?.length) return "No problem list items available.";
   
   const processedConditions = processConditions(conditions, count);
   
-  const summary = processedConditions.map(condition => {
-    return [
-      `Problem: ${condition.code}`,
-      `Status: ${condition.clinicalStatus}`,
-      `Category: ${condition.category}`,
-      `Onset: ${condition.onsetDate}`,
-      `Recorded: ${condition.recordedDate}`
-    ].join(' | ');
+  // Create a summary that follows Epic's terminology of "Problem List"
+  const summary = ["Problem List:"];
+  
+  processedConditions.forEach(condition => {
+    // Format each problem with its key details
+    const details = [
+      `- ${condition.code} (${condition.clinicalStatus})`
+    ];
+    
+    // Add onset date if available
+    if (condition.onsetDate && condition.onsetDate !== 'Unknown') {
+      details.push(`  Onset: ${condition.onsetDate}`);
+    }
+    
+    // Add recorded date if available
+    if (condition.recordedDate && condition.recordedDate !== 'Unknown') {
+      details.push(`  Recorded: ${condition.recordedDate}`);
+    }
+    
+    // Add category information
+    if (condition.category && condition.category !== 'Not categorized') {
+      details.push(`  Type: ${condition.category}`);
+    }
+    
+    summary.push(details.join('\n'));
   });
   
   return summary.join('\n');

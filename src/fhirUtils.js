@@ -210,7 +210,7 @@ export function processEncounters(encounters, count = 10) {
 }
 
 /**
- * Process condition resources
+ * Process condition resources - updated for Epic's implementation
  * @param {Object} conditions - FHIR Bundle containing Condition resources
  * @param {number} count - Maximum number of conditions to process
  * @returns {Array} Processed condition data
@@ -220,38 +220,76 @@ export function processConditions(conditions, count = 10) {
   
   // Sort conditions by date (newest first)
   const entries = (conditions.entry || []).slice().sort((a, b) => {
-    const da = a.resource.recordedDate ? new Date(a.resource.recordedDate) : 0;
-    const db = b.resource.recordedDate ? new Date(b.resource.recordedDate) : 0;
-    return db - da;
+    // Try recordedDate first (from Epic sample)
+    const da = a.resource.recordedDate ? new Date(a.resource.recordedDate) : 
+              // Then try onsetDateTime
+              (a.resource.onsetDateTime ? new Date(a.resource.onsetDateTime) : 
+              // Finally try a default date for sorting
+              new Date(0));
+    
+    const db = b.resource.recordedDate ? new Date(b.resource.recordedDate) : 
+              (b.resource.onsetDateTime ? new Date(b.resource.onsetDateTime) : 
+              new Date(0));
+    
+    return db - da; // Sort newest first
   });
   
   return entries.slice(0, count).map(({ resource }) => {
-    // Extract key condition information
-    const code = resource.code?.text || 
-                resource.code?.coding?.[0]?.display || 'Unknown';
+    // Extract key condition information based on sample data
     
-    // Get clinical status
+    // Get code/problem name - From your sample, use text field if available
+    const code = resource.code?.text || 
+                // Or try display from the first coding
+                resource.code?.coding?.[0]?.display || 
+                // Or try ICD-10 code with display as fallback
+                (resource.code?.coding?.find(c => c.system?.includes('icd-10'))?.display || 
+                // Or try SNOMED code with display
+                resource.code?.coding?.find(c => c.system?.includes('snomed'))?.display || 
+                'Unknown');
+    
+    // Get clinical status from your sample structure
     const clinicalStatus = resource.clinicalStatus?.coding?.[0]?.display || 
-                         resource.clinicalStatus?.text || 'N/A';
+                         resource.clinicalStatus?.text || 'Unknown';
     
     // Get verification status
     const verificationStatus = resource.verificationStatus?.coding?.[0]?.display || 
-                             resource.verificationStatus?.text || 'N/A';
+                             resource.verificationStatus?.text || 'Unknown';
     
-    // Get category (problem, health-concern, etc.)
-    const categories = resource.category?.map(cat => 
-      cat.coding?.[0]?.display || cat.text || 'Unknown'
-    ) || ['Unknown'];
+    // Get categories - Using exact structure from the Epic sample
+    // Look specifically for "Problem List Item" category as shown in sample
+    const problemListCategory = resource.category?.find(cat => 
+      cat.coding?.some(c => c.code === 'problem-list-item')
+    );
     
-    // Get onset date
+    // Get health concerns category if exists
+    const healthConcernCategory = resource.category?.find(cat => 
+      cat.coding?.some(c => c.code === 'health-concern')
+    );
+    
+    // Get SDOH category if exists
+    const sdohCategory = resource.category?.find(cat => 
+      cat.coding?.some(c => c.code === 'sdoh')
+    );
+    
+    // Combine categories for display
+    const categories = [];
+    if (problemListCategory) categories.push('Problem List Item');
+    if (healthConcernCategory) categories.push('Health Concern');
+    if (sdohCategory) categories.push('SDOH');
+    
+    // If no recognized categories found, check any category text
+    if (categories.length === 0 && resource.category?.length) {
+      resource.category.forEach(cat => {
+        if (cat.text && !categories.includes(cat.text)) categories.push(cat.text);
+      });
+    }
+    
+    // Use onset date and recorded date from your sample
     const onsetDate = resource.onsetDateTime ? 
-                    new Date(resource.onsetDateTime).toLocaleDateString() : 
-                    'N/A';
+                    new Date(resource.onsetDateTime).toLocaleDateString() : 'Unknown';
     
-    // Get recorded date
     const recordedDate = resource.recordedDate ? 
-                      new Date(resource.recordedDate).toLocaleDateString() : 
-                      'N/A';
+                       new Date(resource.recordedDate).toLocaleDateString() : 'Unknown';
     
     return {
       id: resource.id,
@@ -259,10 +297,10 @@ export function processConditions(conditions, count = 10) {
       clinicalStatus,
       verificationStatus,
       categories,
-      category: categories.join(', '), // For easier display
+      category: categories.join(', ') || 'Not categorized',
       onsetDate,
       recordedDate,
-      rawResource: resource // Keep the raw resource for additional processing
+      rawResource: resource
     };
   });
 }

@@ -228,7 +228,15 @@ function displayConditions(data) {
   container.innerHTML = '';
 
   if (!data?.entry?.length) {
-    container.textContent = "No problem list or conditions found for this patient.";
+    container.innerHTML = `
+      <div class="info-message">
+        <p>No problem list items available for this patient.</p>
+        <p class="text-xs text-gray-500">
+          Problem list data may be restricted or unavailable in your current Epic configuration.
+          Ensure "Condition.Read (Problems) (R4)" is enabled in your Epic App Orchard setup.
+        </p>
+      </div>
+    `;
     return;
   }
   
@@ -246,13 +254,18 @@ function displayConditions(data) {
     
     const conditionDetails = document.createElement('div');
     conditionDetails.className = 'condition-details';
-    conditionDetails.textContent = `${condition.onsetDate} | ${condition.category}`;
+    // Include both onset and recorded date if available
+    const dateInfo = condition.onsetDate !== 'Unknown' ? 
+                    `Onset: ${condition.onsetDate}` : 
+                    `Recorded: ${condition.recordedDate}`;
+    conditionDetails.textContent = `${dateInfo} | ${condition.category}`;
     
     conditionInfo.appendChild(conditionName);
     conditionInfo.appendChild(conditionDetails);
     
     const conditionStatus = document.createElement('span');
-    conditionStatus.className = `condition-status ${condition.clinicalStatus.toLowerCase().includes('active') ? 'status-active' : 'status-inactive'}`;
+    const isActive = condition.clinicalStatus.toLowerCase().includes('active');
+    conditionStatus.className = `condition-status ${isActive ? 'status-active' : 'status-inactive'}`;
     conditionStatus.textContent = condition.clinicalStatus;
     
     conditionItem.appendChild(conditionInfo);
@@ -454,12 +467,65 @@ async function fetchEncounters(client) {
 async function fetchConditions(client) {
   showLoading(true);
   try {
-    const data = await fetchResource({ client, path: 'Condition?_sort=-date&_count=10', backendUrl: BACKEND_PROXY_URL });
+    // Based on Epic documentation, we need to use correct path for problem list
+    // We'll try several approaches in order of likelihood to work
+    
+    // 1. First try: Standard FHIR approach with category parameter
+    const data = await fetchResource({ 
+      client, 
+      path: 'Condition?category=problem-list-item&_count=10', 
+      backendUrl: BACKEND_PROXY_URL 
+    }).catch(async (firstError) => {
+      console.warn("First attempt failed:", firstError.message);
+      
+      // 2. Second try: With explicit system as shown in sample
+      try {
+        return await fetchResource({ 
+          client, 
+          path: 'Condition?category=http://terminology.hl7.org/CodeSystem/condition-category|problem-list-item&_count=10', 
+          backendUrl: BACKEND_PROXY_URL 
+        });
+      } catch (secondError) {
+        console.warn("Second attempt failed:", secondError.message);
+        
+        // 3. Third try: Just a basic Condition query
+        try {
+          return await fetchResource({ 
+            client, 
+            path: 'Condition?_count=10', 
+            backendUrl: BACKEND_PROXY_URL 
+          });
+        } catch (thirdError) {
+          console.warn("Third attempt failed:", thirdError.message);
+          
+          // 4. Fourth try: Using clinical-status filter
+          try {
+            return await fetchResource({ 
+              client, 
+              path: 'Condition?clinical-status=active&_count=10', 
+              backendUrl: BACKEND_PROXY_URL 
+            });
+          } catch (fourthError) {
+            console.warn("Fourth attempt failed:", fourthError.message);
+            throw firstError; // Re-throw original error if all attempts fail
+          }
+        }
+      }
+    });
+    
     lastConditionData = data;
     displayConditions(data);
     console.log("Conditions summary:\n", summarizeConditions(lastConditionData));
   } catch (e) {
-    displayError(`Failed to fetch conditions: ${e.message}`, e);
+    console.error(`Failed to fetch problem list: ${e.message}`, e);
+    
+    // Create an empty conditions bundle instead of showing an error
+    lastConditionData = { entry: [] };
+    displayConditions(lastConditionData);
+    
+    // Show a more informative message in console
+    console.log("Problem List feature unavailable. This may be due to permissions or API configuration.");
+    console.log("Check that 'Condition.Read (Problems) (R4)' is properly configured in your Epic App Orchard setup.");
   } finally {
     showLoading(false);
   }
