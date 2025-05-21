@@ -285,11 +285,14 @@ export function processConditions(conditions, count = 10) {
     }
     
     // Use onset date and recorded date from your sample
-    const onsetDate = resource.onsetDateTime ? 
-                    new Date(resource.onsetDateTime).toLocaleDateString() : 'Unknown';
-    
-    const recordedDate = resource.recordedDate ? 
-                       new Date(resource.recordedDate).toLocaleDateString() : 'Unknown';
+const onsetDate = resource.onsetDateTime
+  ? resource.onsetDateTime.split('T')[0]
+  : 'Unknown';
+
+const recordedDate = resource.recordedDate
+  ? resource.recordedDate.split('T')[0]
+  : 'Unknown';
+
     
     return {
       id: resource.id,
