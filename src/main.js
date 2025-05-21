@@ -28,34 +28,6 @@ let contextConfig = {
 let expandedSection = 'patient'; // Default expanded section
 let showSettings = false;
 
-// --- Initialize Lucide Icons ---
-function initializeIcons() {
-  // Header icons
-  lucide.createIcons({
-    icons: {
-      'message-square-icon': lucide.icons.messageSquare,
-      'settings-icon': lucide.icons.settings,
-      'patient-checkbox': lucide.icons.checkSquare,
-      'vitals-checkbox': lucide.icons.checkSquare,
-      'meds-checkbox': lucide.icons.checkSquare,
-      'user-icon': lucide.icons.user,
-      'file-icon': lucide.icons.file,
-      'pill-icon': lucide.icons.pill,
-      'patient-section-icon': lucide.icons.user,
-      'vitals-section-icon': lucide.icons.file,
-      'medications-section-icon': lucide.icons.pill,
-      'patient-chevron': lucide.icons.chevronDown,
-      'vitals-chevron': lucide.icons.chevronDown,
-      'medications-chevron': lucide.icons.chevronDown,
-      'response-icon': lucide.icons.messageSquare,
-      'clear-icon': lucide.icons.x,
-      'submit-icon': lucide.icons.search,
-      'clipboard-icon': lucide.icons.clipboard,
-      'user-summary-icon': lucide.icons.user
-    }
-  });
-}
-
 // --- UI Helper Functions ---
 function showLoading(isLoading) {
   const loadingElement = document.getElementById('loading');
@@ -69,24 +41,20 @@ function toggleSection(sectionId) {
   if (wrapper) {
     wrapper.style.display = 'block';
     
-    // Toggle the chevron icon when clicking section header
+    // Toggle the section collapse/expand
     const headerElement = wrapper.querySelector('.flex.items-center.justify-between');
-    if (headerElement) {
-      headerElement.addEventListener('click', () => {
-        const sectionContent = wrapper.querySelector(`#${sectionId}-info`);
-        const chevron = wrapper.querySelector(`#${sectionId}-chevron`);
-        
-        if (sectionContent.style.display === 'none') {
-          sectionContent.style.display = 'block';
-          chevron.classList.add('rotate-180');
-          expandedSection = sectionId;
-        } else {
-          sectionContent.style.display = 'none';
-          chevron.classList.remove('rotate-180');
-          expandedSection = null;
-        }
-      });
-    }
+    const contentElement = wrapper.querySelector(`#${sectionId}-info`);
+    const chevronElement = headerElement.querySelector('.text-gray-500');
+    
+    headerElement.addEventListener('click', () => {
+      if (contentElement.style.display === 'none') {
+        contentElement.style.display = 'block';
+        chevronElement.classList.add('rotate-180');
+      } else {
+        contentElement.style.display = 'none';
+        chevronElement.classList.remove('rotate-180');
+      }
+    });
   }
 }
 
@@ -276,7 +244,17 @@ function setupUIListeners() {
     });
   }
   
-  // Data source toggle handlers
+  // Data source toggle handlers - using simple emoji checkboxes
+  function updateCheckboxDisplay() {
+    const patientCheckbox = document.getElementById('patient-checkbox');
+    const vitalsCheckbox = document.getElementById('vitals-checkbox');
+    const medsCheckbox = document.getElementById('meds-checkbox');
+    
+    if (patientCheckbox) patientCheckbox.textContent = contextConfig.includePatient ? '☑️' : '☐';
+    if (vitalsCheckbox) vitalsCheckbox.textContent = contextConfig.includeVitals ? '☑️' : '☐';
+    if (medsCheckbox) medsCheckbox.textContent = contextConfig.includeMeds ? '☑️' : '☐';
+  }
+  
   const patientToggle = document.getElementById('toggle-patient');
   const vitalsToggle = document.getElementById('toggle-vitals');
   const medsToggle = document.getElementById('toggle-meds');
@@ -284,36 +262,21 @@ function setupUIListeners() {
   if (patientToggle) {
     patientToggle.addEventListener('click', () => {
       contextConfig.includePatient = !contextConfig.includePatient;
-      const checkbox = document.getElementById('patient-checkbox');
-      if (checkbox) {
-        checkbox.innerHTML = contextConfig.includePatient ? 
-          lucide.icons.checkSquare.toSvg() : 
-          lucide.icons.square.toSvg();
-      }
+      updateCheckboxDisplay();
     });
   }
   
   if (vitalsToggle) {
     vitalsToggle.addEventListener('click', () => {
       contextConfig.includeVitals = !contextConfig.includeVitals;
-      const checkbox = document.getElementById('vitals-checkbox');
-      if (checkbox) {
-        checkbox.innerHTML = contextConfig.includeVitals ? 
-          lucide.icons.checkSquare.toSvg() : 
-          lucide.icons.square.toSvg();
-      }
+      updateCheckboxDisplay();
     });
   }
   
   if (medsToggle) {
     medsToggle.addEventListener('click', () => {
       contextConfig.includeMeds = !contextConfig.includeMeds;
-      const checkbox = document.getElementById('meds-checkbox');
-      if (checkbox) {
-        checkbox.innerHTML = contextConfig.includeMeds ? 
-          lucide.icons.checkSquare.toSvg() : 
-          lucide.icons.square.toSvg();
-      }
+      updateCheckboxDisplay();
     });
   }
   
@@ -372,18 +335,17 @@ async function fetchMedications(client) {
 
 // --- Chat Integration ---
 function setupChat() {
-  const chatForm = document.querySelector('.flex.items-center.relative');
   const chatInput = document.getElementById('chat-input');
   const chatSubmit = document.getElementById('chat-submit');
   
-  if (!chatForm || !chatInput || !chatSubmit) return;
+  if (!chatInput || !chatSubmit) return;
   
   const handleSubmit = async () => {
     const message = chatInput.value.trim();
     if (!message) return;
     
     chatInput.value = '';
-    chatSubmit.innerHTML = lucide.icons.refreshCw.toSvg({ 'class': 'animate-spin' });
+    chatSubmit.innerHTML = '⌛'; // Loading indicator
     
     // Show typing indicator
     const responseArea = document.getElementById('chat-response');
@@ -405,7 +367,7 @@ function setupChat() {
     } catch (error) {
       responseText.textContent = `Error: ${error.message}`;
     } finally {
-      chatSubmit.innerHTML = lucide.icons.search.toSvg();
+      chatSubmit.innerHTML = '🔍'; // Reset to search icon
     }
   };
   
@@ -432,7 +394,6 @@ function isAbsoluteUrl(url) {
 
 // --- Main Initialization ---
 function init() {
-  initializeIcons();
   setupUIListeners();
   
   const params = new URLSearchParams(window.location.search);

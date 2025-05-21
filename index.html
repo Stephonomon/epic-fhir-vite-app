@@ -6,8 +6,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Epic FHIR Vite App</title>
     <link rel="stylesheet" href="/src/style.css" />
-    <!-- Add Lucide Icons (for matching the mockup UI) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.292.0/lucide.min.js"></script>
+    <style>
+        /* Add basic icon styles */
+        .icon {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            margin-right: 0.5rem;
+        }
+        .icon-sm {
+            width: 14px;
+            height: 14px;
+        }
+        .icon-lg {
+            width: 20px;
+            height: 20px;
+        }
+        .rotate-180 {
+            transform: rotate(180deg);
+        }
+    </style>
 </head>
 
 <body>
@@ -15,11 +33,11 @@
         <!-- Header -->
         <div class="px-4 py-3 bg-blue-600 text-white flex justify-between items-center">
             <h1 class="text-lg font-semibold flex items-center">
-                <span id="message-square-icon" class="mr-2"></span>
+                <span class="icon icon-lg">💬</span>
                 EHR Assistant
             </h1>
             <button id="settings-btn" class="p-1 rounded hover:bg-blue-700 transition-colors" title="Settings">
-                <span id="settings-icon"></span>
+                ⚙️
             </button>
         </div>
 
@@ -28,23 +46,23 @@
             <h2 class="text-sm font-medium text-gray-700 mb-2">Data Sources for Context</h2>
             <div class="space-y-1">
                 <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-patient">
-                    <span id="patient-checkbox" class="text-blue-500 mr-2"></span>
+                    <span id="patient-checkbox" class="text-blue-500 mr-2">☑️</span>
                     <span class="flex items-center text-sm">
-                        <span id="user-icon" class="mr-2"></span>
+                        <span class="icon">👤</span>
                         <span>Demographics</span>
                     </span>
                 </div>
                 <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-vitals">
-                    <span id="vitals-checkbox" class="text-blue-500 mr-2"></span>
+                    <span id="vitals-checkbox" class="text-blue-500 mr-2">☑️</span>
                     <span class="flex items-center text-sm">
-                        <span id="file-icon" class="mr-2"></span>
+                        <span class="icon">📋</span>
                         <span>Vital Signs</span>
                     </span>
                 </div>
                 <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-meds">
-                    <span id="meds-checkbox" class="text-blue-500 mr-2"></span>
+                    <span id="meds-checkbox" class="text-blue-500 mr-2">☑️</span>
                     <span class="flex items-center text-sm">
-                        <span id="pill-icon" class="mr-2"></span>
+                        <span class="icon">💊</span>
                         <span>Medications</span>
                     </span>
                 </div>
@@ -66,10 +84,10 @@
             <div id="patient-info-wrapper" class="border-b border-gray-200" style="display:none;">
                 <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100">
                     <div class="flex items-center">
-                        <span id="patient-section-icon" class="mr-2"></span>
+                        <span class="icon">👤</span>
                         <span class="ml-2 text-sm font-medium">Demographics</span>
                     </div>
-                    <span id="patient-chevron" class="text-gray-500 transition-transform"></span>
+                    <span class="text-gray-500 transition-transform">▼</span>
                 </div>
                 <div id="patient-info" class="p-3 text-sm bg-white">
                     <div id="patient-data-list" class="grid grid-cols-2 gap-y-1 text-sm"></div>
@@ -80,10 +98,10 @@
             <div id="vital-signs-info-wrapper" class="border-b border-gray-200" style="display:none;">
                 <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100">
                     <div class="flex items-center">
-                        <span id="vitals-section-icon" class="mr-2"></span>
+                        <span class="icon">📋</span>
                         <span class="ml-2 text-sm font-medium">Recent Vital Signs</span>
                     </div>
-                    <span id="vitals-chevron" class="text-gray-500 transition-transform"></span>
+                    <span class="text-gray-500 transition-transform">▼</span>
                 </div>
                 <div id="vital-signs-info" class="p-3 text-sm bg-white">
                     <pre id="vital-signs-data" class="text-sm whitespace-pre-line"></pre>
@@ -94,10 +112,10 @@
             <div id="medications-info-wrapper" class="border-b border-gray-200" style="display:none;">
                 <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100">
                     <div class="flex items-center">
-                        <span id="medications-section-icon" class="mr-2"></span>
+                        <span class="icon">💊</span>
                         <span class="ml-2 text-sm font-medium">Medications</span>
                     </div>
-                    <span id="medications-chevron" class="text-gray-500 transition-transform"></span>
+                    <span class="text-gray-500 transition-transform">▼</span>
                 </div>
                 <div id="medications-info" class="p-3 text-sm bg-white">
                     <div class="space-y-2" id="medications-container"></div>
@@ -109,11 +127,11 @@
         <div id="chat-response" class="p-3 bg-blue-50 border-t border-blue-100 max-h-60 overflow-auto" style="display:none;">
             <div class="flex justify-between items-start mb-2">
                 <h3 class="text-sm font-medium text-blue-700 flex items-center">
-                    <span id="response-icon" class="mr-1"></span>
+                    <span class="icon icon-sm">💬</span>
                     Assistant Response
                 </h3>
                 <button id="clear-response" class="text-gray-400 hover:text-gray-600" title="Clear response">
-                    <span id="clear-icon"></span>
+                    ✕
                 </button>
             </div>
             <div id="chat-response-text" class="text-sm whitespace-pre-line text-gray-800"></div>
@@ -126,17 +144,17 @@
                     class="w-full rounded-lg border border-gray-300 pl-3 pr-12 py-2 min-h-10 max-h-32 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
                     rows="1"></textarea>
                 <button id="chat-submit" class="absolute right-2 p-1.5 rounded-md text-blue-500 hover:bg-blue-50" title="Send">
-                    <span id="submit-icon"></span>
+                    🔍
                 </button>
             </div>
             <div class="flex text-xs text-gray-500 mt-1.5 justify-between items-center">
                 <div class="flex space-x-2">
                     <button class="hover:text-gray-700 flex items-center" title="Copy to clipboard">
-                        <span id="clipboard-icon" class="mr-1"></span>
+                        <span class="icon icon-sm">📋</span>
                         Copy
                     </button>
                     <button class="hover:text-gray-700 flex items-center" title="Patient summary">
-                        <span id="user-summary-icon" class="mr-1"></span>
+                        <span class="icon icon-sm">👤</span>
                         Summary
                     </button>
                 </div>
