@@ -1,7 +1,9 @@
+// src/main.js - Streamlined layout with data validation sidebar
 import './style.css';
 import FHIR from 'fhirclient';
 import { fetchResource } from './fhirClient.js';
-import { getChatResponse } from './openaiChat.js';
+import { getChatResponse } from './openaiChat.js'; // Keep for fallback
+import { EnhancedFHIRChat } from './openaiChatEnhanced.js'; // New enhanced chat
 import { 
   summarizePatient, 
   summarizeVitals, 
@@ -30,497 +32,385 @@ let lastVitalsData = null;
 let lastMedicationsData = null;
 let lastEncounterData = null;
 let lastConditionData = null;
-let smartClientContext = null; // Store the SMART client context
+let smartClientContext = null;
+let enhancedChat = null;
 
-// --- UI & Chat State ---
-let chatHistory = [];
+// --- UI State ---
 let contextConfig = { 
-  vitalsCount: 3, 
-  medsCount: 3, 
-  encounterCount: 3,
-  conditionCount: 3,
+  vitalsCount: 10, 
+  medsCount: 10, 
+  encounterCount: 10,
+  conditionCount: 10,
   includePatient: true, 
   includeVitals: true, 
   includeMeds: true,
   includeEncounters: true,
-  includeConditions: true
+  includeConditions: true,
+  useEnhancedChat: true
 };
-let expandedSection = 'patient'; // Default expanded section
-let showSettings = false;
+
+let chatHistory = [];
+let searchHistory = []; // Track FHIR searches for data inspector
+let rawDataCache = {}; // Cache raw FHIR responses
 
 // --- UI Helper Functions ---
 function showLoading(isLoading) {
   const loadingElement = document.getElementById('loading');
   if (loadingElement) {
-    loadingElement.style.display = isLoading ? 'block' : 'none';
+    loadingElement.style.display = isLoading ? 'flex' : 'none';
   }
 }
 
-function toggleSection(sectionId) {
-  const wrapper = document.getElementById(`${sectionId}-info-wrapper`);
-  if (wrapper) {
-    wrapper.style.display = 'block';
-    
-    // Toggle the section collapse/expand
-    const headerElement = wrapper.querySelector('.flex.items-center.justify-between');
-    const contentElement = wrapper.querySelector(`#${sectionId}-info`);
-    const chevronElement = headerElement.querySelector('.text-gray-500');
-    
-    headerElement.addEventListener('click', () => {
-      if (contentElement.style.display === 'none') {
-        contentElement.style.display = 'block';
-        chevronElement.classList.add('rotate-180');
-      } else {
-        contentElement.style.display = 'none';
-        chevronElement.classList.remove('rotate-180');
-      }
-    });
+function toggleSettings() {
+  const settingsPanel = document.getElementById('settings-panel');
+  const isVisible = settingsPanel.style.display === 'block';
+  settingsPanel.style.display = isVisible ? 'none' : 'block';
+  
+  // Close data inspector if open
+  if (!isVisible) {
+    document.getElementById('data-inspector').style.display = 'none';
   }
 }
 
-function displayPatientData(data, clientContext) {
-  lastPatientData = data;
-  toggleSection('patient');
-  const list = document.getElementById('patient-data-list');
-  list.innerHTML = '';
+function toggleDataInspector() {
+  const inspector = document.getElementById('data-inspector');
+  const settings = document.getElementById('settings-panel');
+  const isVisible = inspector.style.display === 'block';
   
-  const patientInfo = extractPatientInfo(data, clientContext);
+  inspector.style.display = isVisible ? 'none' : 'block';
   
-  const fields = [
-    ['Name:', patientInfo.name],
-    ['Gender:', patientInfo.gender],
-    ['Birth Date:', patientInfo.birthDate],
-    ['Patient ID:', patientInfo.patId], // Show PAT_ID instead of FHIR ID
-    ['CSN:', patientInfo.csn], // Show CSN
-    ['Phone:', patientInfo.phone],
-    ['Email:', patientInfo.email],
-    ['Address:', patientInfo.address],
-  ];
-
-  fields.forEach(([label, value]) => {
-    const labelDiv = document.createElement('div');
-    labelDiv.className = 'text-gray-500';
-    labelDiv.textContent = label;
-    
-    const valueDiv = document.createElement('div');
-    valueDiv.textContent = value;
-    
-    list.appendChild(labelDiv);
-    list.appendChild(valueDiv);
-  });
-}
-
-function displayVitalSigns(data) {
-  lastVitalsData = data;
-  toggleSection('vital-signs');
-  const element = document.getElementById('vital-signs-data');
-  
-  if (!data?.entry?.length) {
-    element.textContent = data?.total === 0 
-      ? "No vital signs found for this patient." 
-      : "No vital signs found or an error occurred.";
-    return;
-  }
-  
-  const processedVitals = processVitalSigns(data, contextConfig.vitalsCount);
-  
-  const vitalsHtml = processedVitals.map(vital => {
-    if (vital.error) return vital.error;
-    
-    return `<div class="pb-2 border-b border-gray-100 last:border-0">
-      <div class="flex justify-between">
-        <span class="font-medium">${vital.name}</span>
-        <span class="text-gray-500 text-xs">${vital.date}</span>
-      </div>
-      <div class="mt-1">
-        <span class="font-medium">${vital.value}</span>
-      </div>
-    </div>`;
-  }).join('');
-  
-  element.innerHTML = vitalsHtml;
-}
-
-function displayMedications(data) {
-  lastMedicationsData = data;
-  toggleSection('medications');
-  const container = document.getElementById('medications-container');
-  container.innerHTML = '';
-
-  if (!data?.entry?.length) {
-    container.textContent = "No medications found for this patient.";
-    return;
-  }
-  
-  const processedMeds = processMedications(data, contextConfig.medsCount);
-  
-  processedMeds.forEach(med => {
-    const medItem = document.createElement('div');
-    medItem.className = 'med-item';
-    
-    const medInfo = document.createElement('div');
-    
-    const medName = document.createElement('div');
-    medName.className = 'med-name';
-    medName.textContent = med.name;
-    
-    const medDetails = document.createElement('div');
-    medDetails.className = 'med-details';
-    medDetails.textContent = med.dosage.formatted;
-    
-    medInfo.appendChild(medName);
-    medInfo.appendChild(medDetails);
-    
-    const medStatus = document.createElement('span');
-    medStatus.className = `med-status ${med.status === 'active' ? 'status-active' : 'status-inactive'}`;
-    medStatus.textContent = med.status;
-    
-    medItem.appendChild(medInfo);
-    medItem.appendChild(medStatus);
-    container.appendChild(medItem);
-  });
-}
-
-function displayEncounters(data) {
-  lastEncounterData = data;
-  toggleSection('encounters');
-  const container = document.getElementById('encounters-container');
-  container.innerHTML = '';
-
-  if (!data?.entry?.length) {
-    container.textContent = "No encounter data found for this patient.";
-    return;
-  }
-  
-  const processedEncounters = processEncounters(data, contextConfig.encounterCount);
-  
-  processedEncounters.forEach(encounter => {
-    const encounterItem = document.createElement('div');
-    encounterItem.className = 'encounter-item';
-    
-    const encounterInfo = document.createElement('div');
-    
-    const encounterType = document.createElement('div');
-    encounterType.className = 'encounter-type';
-    encounterType.textContent = encounter.type;
-    
-    const encounterDetails = document.createElement('div');
-    encounterDetails.className = 'encounter-details';
-    encounterDetails.textContent = `${encounter.period.formatted} | ${encounter.location}`;
-    
-    encounterInfo.appendChild(encounterType);
-    encounterInfo.appendChild(encounterDetails);
-    
-    const encounterStatus = document.createElement('span');
-    encounterStatus.className = `encounter-status ${encounter.status === 'finished' ? 'status-complete' : 'status-active'}`;
-    encounterStatus.textContent = encounter.status;
-    
-    encounterItem.appendChild(encounterInfo);
-    encounterItem.appendChild(encounterStatus);
-    container.appendChild(encounterItem);
-  });
-}
-
-function displayConditions(data) {
-  lastConditionData = data;
-  toggleSection('conditions');
-  const container = document.getElementById('conditions-container');
-  container.innerHTML = '';
-
-  if (!data?.entry?.length) {
-    container.innerHTML = `
-      <div class="info-message">
-        <p>No problem list items available for this patient.</p>
-        <p class="text-xs text-gray-500">
-          Problem list data may be restricted or unavailable in your current Epic configuration.
-          Ensure "Condition.Read (Problems) (R4)" is enabled in your Epic App Orchard setup.
-        </p>
-      </div>
-    `;
-    return;
-  }
-  
-  const processedConditions = processConditions(data, contextConfig.conditionCount);
-  
-  processedConditions.forEach(condition => {
-    const conditionItem = document.createElement('div');
-    conditionItem.className = 'condition-item';
-    
-    const conditionInfo = document.createElement('div');
-    
-    const conditionName = document.createElement('div');
-    conditionName.className = 'condition-name';
-    conditionName.textContent = condition.code;
-    
-    const conditionDetails = document.createElement('div');
-    conditionDetails.className = 'condition-details';
-    // Include both onset and recorded date if available
-    const dateInfo = condition.onsetDate !== 'Unknown' ? 
-                    `Onset: ${condition.onsetDate}` : 
-                    `Recorded: ${condition.recordedDate}`;
-    conditionDetails.textContent = `${dateInfo} | ${condition.category}`;
-    
-    conditionInfo.appendChild(conditionName);
-    conditionInfo.appendChild(conditionDetails);
-    
-    const conditionStatus = document.createElement('span');
-    const isActive = condition.clinicalStatus.toLowerCase().includes('active');
-    conditionStatus.className = `condition-status ${isActive ? 'status-active' : 'status-inactive'}`;
-    conditionStatus.textContent = condition.clinicalStatus;
-    
-    conditionItem.appendChild(conditionInfo);
-    conditionItem.appendChild(conditionStatus);
-    container.appendChild(conditionItem);
-  });
-}
-
-function displayAuthDetails(client) {
-  smartClientContext = client; // Store client context globally
-  
-  const accessEl = document.getElementById('access-token-display');
-  const patientEl = document.getElementById('patient-id-display');
-  const serverEl = document.getElementById('fhir-server-display');
-  const tokenEl = document.getElementById('token-response-display');
-
-  if (accessEl) {
-    const tok = client?.state?.tokenResponse?.access_token;
-    accessEl.textContent = tok ? tok.substring(0, 30) + '...' : 'N/A';
-  }
-  if (patientEl) patientEl.textContent = client?.patient?.id || 'N/A';
-  if (serverEl) serverEl.textContent = client?.state?.serverUrl || 'N/A';
-  if (tokenEl) tokenEl.textContent = client?.state?.tokenResponse
-    ? JSON.stringify(client.state.tokenResponse, null, 2)
-    : 'No token response available.';
-  
-  // Log context information for debugging
-  console.log("SMART Client Context:", client);
-  if (client?.state?.tokenResponse) {
-    console.log("Patient ID:", client.patient?.id);
-    console.log("PAT_ID:", client.state.tokenResponse.pat_id);
-    console.log("CSN:", client.state.tokenResponse.csn);
-    console.log("Scopes in access token:", client.state.tokenResponse.scope);
-    
-
+  // Close settings if open
+  if (!isVisible) {
+    settings.style.display = 'none';
   }
 }
 
-function displayLaunchTokenData(client) {
-  const jsonEl = document.getElementById('launch-token-json');
-  const token = client?.state?.tokenResponse;
-  if (!token) return;
-
-  const filtered = {};
-  Object.keys(token).forEach(key => {
-    if (!['access_token','token_type','expires_in','scope','id_token'].includes(key)) {
-      filtered[key] = token[key];
+function updateContextIndicators() {
+  const indicators = {
+    'patient-indicator': contextConfig.includePatient,
+    'vitals-indicator': contextConfig.includeVitals,
+    'meds-indicator': contextConfig.includeMeds,
+    'encounters-indicator': contextConfig.includeEncounters,
+    'conditions-indicator': contextConfig.includeConditions,
+    'enhanced-indicator': contextConfig.useEnhancedChat
+  };
+  
+  Object.entries(indicators).forEach(([id, enabled]) => {
+    const indicator = document.getElementById(id);
+    if (indicator) {
+      indicator.className = `context-indicator ${enabled ? 'enabled' : 'disabled'}`;
     }
   });
-  if (Object.keys(filtered).length) {
-    jsonEl.textContent = JSON.stringify(filtered, null, 2);
+}
+
+function displayPatientHeaderInfo(data, clientContext) {
+  lastPatientData = data;
+  const patientInfo = extractPatientInfo(data, clientContext);
+  
+  // Update header patient info
+  document.getElementById('patient-summary-header').querySelector('.patient-name').textContent = patientInfo.name;
+  document.getElementById('patient-age-gender').textContent = `${calculateAge(patientInfo.birthDate)} / ${patientInfo.gender}`;
+  document.getElementById('patient-mrn').textContent = `PAT ID: ${patientInfo.patId}`;
+  document.getElementById('patient-csn').textContent = `CSN: ${patientInfo.csn}`;
+}
+
+function calculateAge(birthDate) {
+  if (!birthDate || birthDate === 'N/A') return 'Unknown';
+  const birth = new Date(birthDate);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age--;
   }
+  return age;
+}
+
+function addChatMessage(role, content, toolCalls = []) {
+  const chatContainer = document.getElementById('chat-history');
+  const messageDiv = document.createElement('div');
+  messageDiv.className = `chat-message ${role}`;
+  
+  const timestamp = new Date().toLocaleTimeString();
+  
+  let toolInfo = '';
+  if (toolCalls && toolCalls.length > 0) {
+    const tools = toolCalls.map(call => call.function).join(', ');
+    toolInfo = `<div class="tool-usage">🔍 Searched: ${tools}</div>`;
+    
+    // Add to search history for data inspector
+    toolCalls.forEach(call => {
+      addToSearchHistory(call.function, call.parameters || {});
+    });
+  }
+  
+  messageDiv.innerHTML = `
+    <div class="message-header">
+      <span class="message-role">${role === 'user' ? 'You' : 'Assistant'}</span>
+      <span class="message-time">${timestamp}</span>
+    </div>
+    ${toolInfo}
+    <div class="message-content">${role === 'assistant' ? marked.parse(content) : content}</div>
+    <div class="message-actions">
+      <button onclick="copyMessage(this)" title="Copy message">📋</button>
+      ${role === 'assistant' ? '<button onclick="askFollowUp(this)" title="Ask follow-up">💬</button>' : ''}
+    </div>
+  `;
+  
+  chatContainer.appendChild(messageDiv);
+  chatContainer.scrollTop = chatContainer.scrollHeight;
+  
+  // Store in history
+  chatHistory.push({ role, content, toolCalls, timestamp });
+}
+
+function addToSearchHistory(functionName, parameters) {
+  const timestamp = new Date().toLocaleTimeString();
+  const searchId = `search_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  const searchEntry = {
+    id: searchId,
+    timestamp,
+    function: functionName,
+    parameters,
+    status: 'pending'
+  };
+  
+  searchHistory.unshift(searchEntry); // Add to beginning
+  updateSearchHistoryDisplay();
+  
+  return searchId;
+}
+
+function updateSearchHistoryDisplay() {
+  const historyContainer = document.getElementById('search-history');
+  
+  if (searchHistory.length === 0) {
+    historyContainer.innerHTML = '<div class="no-searches">No searches yet. Ask the AI a question to see FHIR queries here.</div>';
+    return;
+  }
+  
+  historyContainer.innerHTML = searchHistory.slice(0, 10).map(search => `
+    <div class="search-entry ${search.status}" data-search-id="${search.id}">
+      <div class="search-header">
+        <span class="search-function">${search.function}</span>
+        <span class="search-time">${search.timestamp}</span>
+      </div>
+      <div class="search-params">${Object.keys(search.parameters).length ? 
+        Object.entries(search.parameters).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ') : 
+        'No parameters'}</div>
+      <div class="search-status">${search.status}</div>
+    </div>
+  `).join('');
+  
+  // Update data viewer dropdown
+  updateDataViewerOptions();
+}
+
+function updateDataViewerOptions() {
+  const select = document.getElementById('data-viewer-select');
+  const completedSearches = searchHistory.filter(s => s.status === 'completed');
+  
+  select.innerHTML = '<option value="">Select a search result to view</option>';
+  
+  completedSearches.forEach(search => {
+    const option = document.createElement('option');
+    option.value = search.id;
+    option.textContent = `${search.function} (${search.timestamp})`;
+    select.appendChild(option);
+  });
+}
+
+function showRawData(searchId) {
+  const rawDataViewer = document.getElementById('raw-data-viewer');
+  const search = searchHistory.find(s => s.id === searchId);
+  const rawData = rawDataCache[searchId];
+  
+  if (!search || !rawData) {
+    rawDataViewer.innerHTML = '<div class="no-data">No data available for this search</div>';
+    return;
+  }
+  
+  rawDataViewer.innerHTML = `
+    <div class="raw-data-header">
+      <h5>${search.function}</h5>
+      <div class="data-meta">
+        <span>Time: ${search.timestamp}</span>
+        <span>Entries: ${rawData.entry?.length || 0}</span>
+        <span>Total: ${rawData.total || 'Unknown'}</span>
+      </div>
+    </div>
+    <pre class="json-viewer">${JSON.stringify(rawData, null, 2)}</pre>
+  `;
 }
 
 function displayError(message, errorObj = null) {
   showLoading(false);
-  const errWrapper = document.getElementById('error-info-wrapper');
-  const errEl = document.getElementById('error-info');
-  if (errEl && errWrapper) {
-    errWrapper.style.display = 'block';
-    errEl.textContent = message + (errorObj ? `
-Details: ${errorObj.stack||errorObj}` : '');
-  }
+  addChatMessage('assistant', `**Error:** ${message}${errorObj ? `\n\nDetails: ${errorObj.message}` : ''}`);
   console.error(message, errorObj);
 }
 
 // --- Setup UI Event Listeners ---
 function setupUIListeners() {
   // Settings toggle
-  const settingsBtn = document.getElementById('settings-btn');
-  const settingsPanel = document.getElementById('settings-panel');
-  if (settingsBtn && settingsPanel) {
-    settingsBtn.addEventListener('click', () => {
-      showSettings = !showSettings;
-      settingsPanel.style.display = showSettings ? 'block' : 'none';
+  const settingsToggle = document.getElementById('settings-toggle');
+  if (settingsToggle) {
+    settingsToggle.addEventListener('click', toggleSettings);
+  }
+  
+  // Data inspector toggle
+  const inspectorToggle = document.getElementById('data-inspector-toggle');
+  if (inspectorToggle) {
+    inspectorToggle.addEventListener('click', toggleDataInspector);
+  }
+  
+  // Inspector close button
+  const inspectorClose = document.getElementById('inspector-close');
+  if (inspectorClose) {
+    inspectorClose.addEventListener('click', () => {
+      document.getElementById('data-inspector').style.display = 'none';
     });
   }
   
-  // Data source toggle handlers - using simple emoji checkboxes
-  function updateCheckboxDisplay() {
-    const patientCheckbox = document.getElementById('patient-checkbox');
-    const vitalsCheckbox = document.getElementById('vitals-checkbox');
-    const medsCheckbox = document.getElementById('meds-checkbox');
-    const encountersCheckbox = document.getElementById('encounters-checkbox');
-    const conditionsCheckbox = document.getElementById('conditions-checkbox');
-    
-    if (patientCheckbox) patientCheckbox.textContent = contextConfig.includePatient ? '☑️' : '☐';
-    if (vitalsCheckbox) vitalsCheckbox.textContent = contextConfig.includeVitals ? '☑️' : '☐';
-    if (medsCheckbox) medsCheckbox.textContent = contextConfig.includeMeds ? '☑️' : '☐';
-    if (encountersCheckbox) encountersCheckbox.textContent = contextConfig.includeEncounters ? '☑️' : '☐';
-    if (conditionsCheckbox) conditionsCheckbox.textContent = contextConfig.includeConditions ? '☑️' : '☐';
-  }
+  // Context toggles (checkboxes)
+  const toggles = {
+    'toggle-patient': () => { contextConfig.includePatient = !contextConfig.includePatient; },
+    'toggle-vitals': () => { contextConfig.includeVitals = !contextConfig.includeVitals; },
+    'toggle-meds': () => { contextConfig.includeMeds = !contextConfig.includeMeds; },
+    'toggle-encounters': () => { contextConfig.includeEncounters = !contextConfig.includeEncounters; },
+    'toggle-conditions': () => { contextConfig.includeConditions = !contextConfig.includeConditions; },
+    'toggle-enhanced': () => { 
+      contextConfig.useEnhancedChat = !contextConfig.useEnhancedChat;
+      if (contextConfig.useEnhancedChat && smartClientContext) {
+        enhancedChat = new EnhancedFHIRChat(OPENAI_API_KEY, smartClientContext, BACKEND_PROXY_URL);
+      }
+    }
+  };
   
-  const patientToggle = document.getElementById('toggle-patient');
-  const vitalsToggle = document.getElementById('toggle-vitals');
-  const medsToggle = document.getElementById('toggle-meds');
-  const encountersToggle = document.getElementById('toggle-encounters');
-  const conditionsToggle = document.getElementById('toggle-conditions');
+  Object.entries(toggles).forEach(([id, handler]) => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.addEventListener('change', () => {
+        handler();
+        updateContextIndicators();
+      });
+    }
+  });
   
-  if (patientToggle) {
-    patientToggle.addEventListener('click', () => {
-      contextConfig.includePatient = !contextConfig.includePatient;
-      updateCheckboxDisplay();
-    });
-  }
-  
-  if (vitalsToggle) {
-    vitalsToggle.addEventListener('click', () => {
-      contextConfig.includeVitals = !contextConfig.includeVitals;
-      updateCheckboxDisplay();
-    });
-  }
-  
-  if (medsToggle) {
-    medsToggle.addEventListener('click', () => {
-      contextConfig.includeMeds = !contextConfig.includeMeds;
-      updateCheckboxDisplay();
-    });
-  }
-  
-  if (encountersToggle) {
-    encountersToggle.addEventListener('click', () => {
-      contextConfig.includeEncounters = !contextConfig.includeEncounters;
-      updateCheckboxDisplay();
-    });
-  }
-  
-  if (conditionsToggle) {
-    conditionsToggle.addEventListener('click', () => {
-      contextConfig.includeConditions = !contextConfig.includeConditions;
-      updateCheckboxDisplay();
-    });
-  }
-  
-  // Clear response button
-  const clearResponseBtn = document.getElementById('clear-response');
-  if (clearResponseBtn) {
-    clearResponseBtn.addEventListener('click', () => {
-      const responseArea = document.getElementById('chat-response');
-      if (responseArea) responseArea.style.display = 'none';
-    });
-  }
-}
-
-// --- Data Fetchers ---
-async function fetchPatientData(client) {
-  showLoading(true);
-  try {
-    const data = await fetchResource({ client, path: `Patient/${client.patient.id}`, backendUrl: BACKEND_PROXY_URL });
-    lastPatientData = data;
-    displayPatientData(data, client);
-    console.log("Patient summary:\n", summarizePatient(lastPatientData, client));
-  } catch (e) {
-    displayError(`Failed to fetch patient data: ${e.message}`, e);
-  } finally {
-    showLoading(false);
-  }
-}
-
-async function fetchVitalSigns(client) {
-  showLoading(true);
-  try {
-    const data = await fetchResource({ client, path: 'Observation?category=vital-signs&_sort=-date&_count=10', backendUrl: BACKEND_PROXY_URL });
-    lastVitalsData = data;
-    displayVitalSigns(data);
-    console.log("Vitals summary:\n", summarizeVitals(lastVitalsData));
-  } catch (e) {
-    displayError(`Failed to fetch vital signs: ${e.message}`, e);
-  } finally {
-    showLoading(false);
-  }
-}
-
-async function fetchMedications(client) {
-  showLoading(true);
-  try {
-    const data = await fetchResource({ client, path: 'MedicationRequest?_sort=-authoredon&_count=10', backendUrl: BACKEND_PROXY_URL });
-    lastMedicationsData = data;
-    displayMedications(data);
-    console.log("Meds summary:\n", summarizeMeds(lastMedicationsData));
-  } catch (e) {
-    displayError(`Failed to fetch medications: ${e.message}`, e);
-  } finally {
-    showLoading(false);
-  }
-}
-
-async function fetchEncounters(client) {
-  showLoading(true);
-  try {
-    const data = await fetchResource({ client, path: 'Encounter?_sort=-date&_count=10', backendUrl: BACKEND_PROXY_URL });
-    lastEncounterData = data;
-    displayEncounters(data);
-    console.log("Encounters summary:\n", summarizeEncounters(lastEncounterData));
-  } catch (e) {
-    displayError(`Failed to fetch encounters: ${e.message}`, e);
-  } finally {
-    showLoading(false);
-  }
-}
-
-async function fetchConditions(client) {
-  showLoading(true);
-  try {
-    // Use the correct patient reference format: Patient/[id]
-    const patientReference = `Patient/${client.patient.id}`;
-    
-    // Update the path to use patient=[Patient reference] instead of just the ID
-    const data = await fetchResource({ 
-      client, 
-      path: `Condition?patient=${encodeURIComponent(patientReference)}&_count=10`, 
-      backendUrl: BACKEND_PROXY_URL 
-    }).catch(async (firstError) => {
-      console.warn("First attempt failed:", firstError.message);
+  // Clear chat
+  const clearChatBtn = document.getElementById('clear-chat');
+  if (clearChatBtn) {
+    clearChatBtn.addEventListener('click', () => {
+      document.getElementById('chat-history').innerHTML = '';
+      chatHistory = [];
+      searchHistory = [];
+      rawDataCache = {};
+      updateSearchHistoryDisplay();
+      if (enhancedChat) enhancedChat.clearConversation();
       
-      // Try with category parameter if the first attempt fails
-      try {
-        return await fetchResource({ 
-          client, 
-          path: `Condition?patient=${encodeURIComponent(patientReference)}&category=problem-list-item&_count=10`, 
-          backendUrl: BACKEND_PROXY_URL 
-        });
-      } catch (secondError) {
-        console.warn("Second attempt failed:", secondError.message);
-        
-        // Try with clinical-status parameter if the second attempt fails
-        try {
-          return await fetchResource({ 
-            client, 
-            path: `Condition?patient=${encodeURIComponent(patientReference)}&clinical-status=active&_count=10`, 
-            backendUrl: BACKEND_PROXY_URL 
-          });
-        } catch (thirdError) {
-          console.warn("Third attempt failed:", thirdError.message);
-          throw firstError; // Re-throw original error if all attempts fail
-        }
+      // Add welcome message back
+      addWelcomeMessage();
+    });
+  }
+  
+  // Export chat
+  const exportChatBtn = document.getElementById('export-chat');
+  if (exportChatBtn) {
+    exportChatBtn.addEventListener('click', exportChatHistory);
+  }
+  
+  // Data viewer dropdown
+  const dataViewerSelect = document.getElementById('data-viewer-select');
+  if (dataViewerSelect) {
+    dataViewerSelect.addEventListener('change', (e) => {
+      if (e.target.value) {
+        showRawData(e.target.value);
       }
     });
-    
-    lastConditionData = data;
-    displayConditions(data);
-    console.log("Conditions summary:\n", summarizeConditions(lastConditionData));
-  } catch (e) {
-    console.error(`Failed to fetch problem list: ${e.message}`, e);
-    
-    // Create an empty conditions bundle instead of showing an error
-    lastConditionData = { entry: [] };
-    displayConditions(lastConditionData);
-    
-    // Show a more informative message in console
-    console.log("Problem List feature unavailable. This may be due to permissions or API configuration.");
-    console.log("Check that 'Condition.Read (Problems) (R4)' is properly configured in your Epic App Orchard setup.");
-  } finally {
-    showLoading(false);
   }
+  
+  // Copy raw data button
+  const copyRawDataBtn = document.getElementById('copy-raw-data');
+  if (copyRawDataBtn) {
+    copyRawDataBtn.addEventListener('click', () => {
+      const searchId = document.getElementById('data-viewer-select').value;
+      if (searchId && rawDataCache[searchId]) {
+        navigator.clipboard.writeText(JSON.stringify(rawDataCache[searchId], null, 2));
+        copyRawDataBtn.innerHTML = '✓';
+        setTimeout(() => copyRawDataBtn.innerHTML = '📋', 1000);
+      }
+    });
+  }
+  
+  // Suggested questions
+  const suggestedQuestions = document.querySelectorAll('.suggested-question');
+  suggestedQuestions.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const question = btn.textContent.trim();
+      document.getElementById('chat-input').value = question;
+      handleChatSubmit();
+    });
+  });
+  
+  // Close dropdowns when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#settings-panel') && !e.target.closest('#settings-toggle')) {
+      document.getElementById('settings-panel').style.display = 'none';
+    }
+  });
+}
+
+function addWelcomeMessage() {
+  const welcomeHTML = `
+    <div class="welcome-message">
+      <div class="welcome-header">
+        <span class="icon">🤖</span>
+        <h3>Welcome to EHR Assistant</h3>
+      </div>
+      <p>I can help you analyze patient data, answer questions about medications, vitals, conditions, and more. Ask me anything about this patient!</p>
+      <div class="quick-start">
+        <div class="suggested-questions">
+          <button class="suggested-question">What are the most recent vital signs?</button>
+          <button class="suggested-question">Show me all active medications</button>
+          <button class="suggested-question">What problems are currently active?</button>
+          <button class="suggested-question">Summarize recent visits</button>
+          <button class="suggested-question">Are there any concerning trends?</button>
+          <button class="suggested-question">Show lab results from the last year</button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.getElementById('chat-history').innerHTML = welcomeHTML;
+  
+  // Re-attach event listeners for suggested questions
+  const suggestedQuestions = document.querySelectorAll('.suggested-question');
+  suggestedQuestions.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const question = btn.textContent.trim();
+      document.getElementById('chat-input').value = question;
+      handleChatSubmit();
+    });
+  });
+}
+
+function exportChatHistory() {
+  const exportData = {
+    patient: lastPatientData ? extractPatientInfo(lastPatientData, smartClientContext) : null,
+    chatHistory: chatHistory,
+    searchHistory: searchHistory,
+    timestamp: new Date().toISOString()
+  };
+  
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ehr-assistant-chat-${new Date().toISOString().split('T')[0]}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // --- Chat Integration ---
@@ -530,21 +420,81 @@ function setupChat() {
   
   if (!chatInput || !chatSubmit) return;
   
-  const handleSubmit = async () => {
-    const message = chatInput.value.trim();
-    if (!message) return;
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleChatSubmit();
+    }
+  });
+  
+  chatSubmit.addEventListener('click', handleChatSubmit);
+  
+  // Auto-resize textarea
+  chatInput.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+  });
+}
+
+async function handleChatSubmit() {
+  const chatInput = document.getElementById('chat-input');
+  const chatSubmit = document.getElementById('chat-submit');
+  const message = chatInput.value.trim();
+  
+  if (!message) return;
+  
+  // Add user message
+  addChatMessage('user', message);
+  
+  // Clear input and show loading
+  chatInput.value = '';
+  chatInput.style.height = 'auto';
+  chatSubmit.disabled = true;
+  chatSubmit.innerHTML = '⌛';
+  
+  try {
+    let aiResp;
     
-    chatInput.value = '';
-    chatSubmit.innerHTML = '⌛'; // Loading indicator
-    
-    // Show typing indicator
-    const responseArea = document.getElementById('chat-response');
-    const responseText = document.getElementById('chat-response-text');
-    responseArea.style.display = 'block';
-    responseText.textContent = 'Thinking...';
-    
-    try {
-      const aiResp = await getChatResponse({
+    if (contextConfig.useEnhancedChat && enhancedChat) {
+      console.log('Using enhanced chat mode');
+      
+      // Patch the enhanced chat to capture search data
+      const originalExecuteTool = enhancedChat.fhirTools.executeTool.bind(enhancedChat.fhirTools);
+      enhancedChat.fhirTools.executeTool = async function(toolName, parameters) {
+        const searchId = addToSearchHistory(toolName, parameters);
+        
+        try {
+          const result = await originalExecuteTool(toolName, parameters);
+          
+          // Cache the raw data
+          rawDataCache[searchId] = result;
+          
+          // Update search status
+          const searchEntry = searchHistory.find(s => s.id === searchId);
+          if (searchEntry) {
+            searchEntry.status = 'completed';
+            searchEntry.resultCount = result.count || result.observations?.length || result.medications?.length || result.encounters?.length || result.conditions?.length || result.reports?.length || 0;
+          }
+          
+          updateSearchHistoryDisplay();
+          return result;
+        } catch (error) {
+          // Update search status on error
+          const searchEntry = searchHistory.find(s => s.id === searchId);
+          if (searchEntry) {
+            searchEntry.status = 'error';
+            searchEntry.error = error.message;
+          }
+          updateSearchHistoryDisplay();
+          throw error;
+        }
+      };
+      
+      aiResp = await enhancedChat.getChatResponse(message, true);
+      addChatMessage('assistant', aiResp.content, aiResp.toolCalls);
+    } else {
+      // Fallback to original static chat
+      aiResp = await getChatResponse({
         chatHistory: [{ role: 'user', content: message }],
         patient: contextConfig.includePatient ? lastPatientData : null,
         vitals: contextConfig.includeVitals ? lastVitalsData : null,
@@ -553,32 +503,111 @@ function setupChat() {
         conditions: contextConfig.includeConditions ? lastConditionData : null,
         config: contextConfig,
         openAiKey: OPENAI_API_KEY,
-        smartContext: smartClientContext // Pass SMART context to chat
+        smartContext: smartClientContext
       });
-      
-      responseText.innerHTML = marked.parse(aiResp.content);
-    } catch (error) {
-      responseText.textContent = `Error: ${error.message}`;
-    } finally {
-      chatSubmit.innerHTML = '🔍'; // Reset to search icon
+      addChatMessage('assistant', aiResp.content);
     }
-  };
-  
-  chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
-    }
-  });
-  
-  chatSubmit.addEventListener('click', handleSubmit);
-  
-  // Adjust textarea height as content grows
-  chatInput.addEventListener('input', function() {
-    this.style.height = 'auto';
-    this.style.height = (this.scrollHeight < 150) ? this.scrollHeight + 'px' : '150px';
-  });
+    
+  } catch (error) {
+    console.error('Chat error:', error);
+    addChatMessage('assistant', `**Error:** ${error.message}`);
+  } finally {
+    chatSubmit.disabled = false;
+    chatSubmit.innerHTML = '🔍';
+    chatInput.focus();
+  }
 }
+
+// --- Data Fetchers ---
+async function fetchPatientData(client) {
+  showLoading(true);
+  try {
+    const data = await fetchResource({ client, path: `Patient/${client.patient.id}`, backendUrl: BACKEND_PROXY_URL });
+    displayPatientHeaderInfo(data, client);
+    console.log("Patient data loaded");
+  } catch (e) {
+    displayError(`Failed to fetch patient data: ${e.message}`, e);
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function fetchVitalSigns(client) {
+  try {
+    const data = await fetchResource({ client, path: 'Observation?category=vital-signs&_sort=-date&_count=50', backendUrl: BACKEND_PROXY_URL });
+    lastVitalsData = data;
+    console.log("Vitals data loaded:", data?.entry?.length || 0, "entries");
+  } catch (e) {
+    console.error(`Failed to fetch vital signs: ${e.message}`, e);
+  }
+}
+
+async function fetchMedications(client) {
+  try {
+    const data = await fetchResource({ client, path: 'MedicationRequest?_sort=-authoredon&_count=50', backendUrl: BACKEND_PROXY_URL });
+    lastMedicationsData = data;
+    console.log("Medications data loaded:", data?.entry?.length || 0, "entries");
+  } catch (e) {
+    console.error(`Failed to fetch medications: ${e.message}`, e);
+  }
+}
+
+async function fetchEncounters(client) {
+  try {
+    const data = await fetchResource({ client, path: 'Encounter?_sort=-date&_count=50', backendUrl: BACKEND_PROXY_URL });
+    lastEncounterData = data;
+    console.log("Encounters data loaded:", data?.entry?.length || 0, "entries");
+  } catch (e) {
+    console.error(`Failed to fetch encounters: ${e.message}`, e);
+  }
+}
+
+async function fetchConditions(client) {
+  try {
+    const patientReference = `Patient/${client.patient.id}`;
+    const data = await fetchResource({ 
+      client, 
+      path: `Condition?patient=${encodeURIComponent(patientReference)}&_count=50`, 
+      backendUrl: BACKEND_PROXY_URL 
+    }).catch(async (firstError) => {
+      console.warn("First attempt failed:", firstError.message);
+      try {
+        return await fetchResource({ 
+          client, 
+          path: `Condition?patient=${encodeURIComponent(patientReference)}&category=problem-list-item&_count=50`, 
+          backendUrl: BACKEND_PROXY_URL 
+        });
+      } catch (secondError) {
+        console.warn("Second attempt failed:", secondError.message);
+        return await fetchResource({ 
+          client, 
+          path: `Condition?patient=${encodeURIComponent(patientReference)}&clinical-status=active&_count=50`, 
+          backendUrl: BACKEND_PROXY_URL 
+        });
+      }
+    });
+    
+    lastConditionData = data;
+    console.log("Conditions data loaded:", data?.entry?.length || 0, "entries");
+  } catch (e) {
+    console.error(`Failed to fetch conditions: ${e.message}`, e);
+    lastConditionData = { entry: [] };
+  }
+}
+
+// --- Global functions for button actions ---
+window.copyMessage = function(button) {
+  const messageContent = button.closest('.chat-message').querySelector('.message-content');
+  navigator.clipboard.writeText(messageContent.textContent);
+  button.innerHTML = '✓';
+  setTimeout(() => button.innerHTML = '📋', 1000);
+};
+
+window.askFollowUp = function(button) {
+  const chatInput = document.getElementById('chat-input');
+  chatInput.value = 'Can you elaborate on that? ';
+  chatInput.focus();
+};
 
 // --- SMART Launch/EHR Auth Logic ---
 function isAbsoluteUrl(url) {
@@ -588,6 +617,8 @@ function isAbsoluteUrl(url) {
 // --- Main Initialization ---
 function init() {
   setupUIListeners();
+  updateContextIndicators();
+  addWelcomeMessage();
   
   const params = new URLSearchParams(window.location.search);
   const launchToken = params.get('launch');
@@ -597,20 +628,25 @@ function init() {
     FHIR.oauth2.ready()
       .then(async client => {
         window.smartClient = client;
-        
-        // Store client context globally
         smartClientContext = client;
         
-        await fetchPatientData(client);
-        displayAuthDetails(client);
-        displayLaunchTokenData(client);
-        if (client.patient?.id) {
-          await fetchVitalSigns(client);
-          await fetchMedications(client);
-          await fetchEncounters(client);
-          await fetchConditions(client);
+        if (contextConfig.useEnhancedChat && OPENAI_API_KEY) {
+          enhancedChat = new EnhancedFHIRChat(OPENAI_API_KEY, client, BACKEND_PROXY_URL);
+          console.log('Enhanced FHIR chat initialized');
         }
+        
+        // Load all data in background
+        await fetchPatientData(client);
+        await Promise.all([
+          fetchVitalSigns(client),
+          fetchMedications(client),
+          fetchEncounters(client),
+          fetchConditions(client)
+        ]);
+        
         setupChat();
+        
+        console.log("All patient data loaded successfully");
       })
       .catch(err => displayError(`SMART init error: ${err.message}`, err));
   } else if (launchToken && iss) {
@@ -620,7 +656,7 @@ function init() {
       showLoading(true);
       FHIR.oauth2.authorize({
         client_id: CLIENT_ID,
-        scope: 'launch launch/patient patient/*.read observation/*.read medication/*.read encounter/*.read condition/*.read openid fhirUser ' +
+        scope: 'launch launch/patient patient/*.read observation/*.read medication/*.read encounter/*.read condition/*.read diagnosticreport/*.read openid fhirUser ' +
                'context-user context-fhirUser context-enc_date context-user_ip context-syslogin ' +
                'context-user_timestamp context-workstation_id context-csn context-pat_id',
         redirect_uri: APP_REDIRECT_URI,

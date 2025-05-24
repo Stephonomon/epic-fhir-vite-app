@@ -4,184 +4,211 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Epic FHIR Vite App</title>
+    <title>Epic FHIR EHR Assistant</title>
     <link rel="stylesheet" href="/src/style.css" />
 </head>
 
 <body>
-    <div id="app" class="flex flex-col h-screen bg-white w-full max-w-md shadow-md overflow-hidden border-l border-gray-200">
-        <!-- Header -->
-        <div class="px-4 py-3 bg-blue-600 text-white flex justify-between items-center">
-            <h1 class="text-lg font-semibold flex items-center">
-                <span class="icon icon-lg">💬</span>
-                EHR Assistant
-            </h1>
-            <button id="settings-btn" class="p-1 rounded hover:bg-blue-700 transition-colors" title="Settings">
-                ⚙️
-            </button>
-        </div>
-
-        <!-- Settings panel -->
-        <div id="settings-panel" class="p-3 bg-gray-50 border-b border-gray-200" style="display: none;">
-            <h2 class="text-sm font-medium text-gray-700 mb-2">Data Sources for Context</h2>
-            <div class="space-y-1">
-                <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-patient">
-                    <span id="patient-checkbox" class="text-blue-500 mr-2">☑️</span>
-                    <span class="flex items-center text-sm">
-                        <span class="icon">👤</span>
-                        <span>Demographics</span>
-                    </span>
-                </div>
-                <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-vitals">
-                    <span id="vitals-checkbox" class="text-blue-500 mr-2">☑️</span>
-                    <span class="flex items-center text-sm">
-                        <span class="icon">📋</span>
-                        <span>Vital Signs</span>
-                    </span>
-                </div>
-                <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-meds">
-                    <span id="meds-checkbox" class="text-blue-500 mr-2">☑️</span>
-                    <span class="flex items-center text-sm">
-                        <span class="icon">💊</span>
-                        <span>Medications</span>
-                    </span>
-                </div>
-                <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-encounters">
-                    <span id="encounters-checkbox" class="text-blue-500 mr-2">☑️</span>
-                    <span class="flex items-center text-sm">
-                        <span class="icon">🏥</span>
-                        <span>Encounters</span>
-                    </span>
-                </div>
-                <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-conditions">
-                    <span id="conditions-checkbox" class="text-blue-500 mr-2">☑️</span>
-                    <span class="flex items-center text-sm">
-                        <span class="icon">🩺</span>
-                        <span>Problems</span>
-                    </span>
-                </div>
+    <div id="app" class="streamlined-layout">
+        <!-- Main Header with Patient Info -->
+        <header class="app-header">
+            <div class="header-left">
+                <h1 class="app-title">
+                    <span class="icon">💬</span>
+                    EHR Assistant
+                </h1>
             </div>
-        </div>
-
-        <!-- Loading indicator -->
-        <div id="loading" class="p-3 text-center text-gray-500">Loading...</div>
-
-        <!-- Error section -->
-        <div id="error-info-wrapper" style="display:none; color: red;" class="p-3 border-b border-gray-200">
-            <h3 class="text-sm font-medium text-red-700 mb-2">Error</h3>
-            <div id="error-info" class="text-sm"></div>
-        </div>
-
-        <!-- Data Preview Sections -->
-        <div class="flex-1 overflow-auto" id="data-sections">
-            <!-- Patient Demographics Section -->
-            <div id="patient-info-wrapper" class="border-b border-gray-200" style="display:none;">
-                <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100">
-                    <div class="flex items-center">
-                        <span class="icon">👤</span>
-                        <span class="ml-2 text-sm font-medium">Demographics</span>
+            
+            <!-- Patient Info Section (like user info) -->
+            <div class="patient-header-info">
+                <div id="patient-summary-header" class="patient-summary-compact">
+                    <div class="patient-name">Loading Patient...</div>
+                    <div class="patient-details">
+                        <span class="patient-detail" id="patient-age-gender">-- / --</span>
+                        <span class="patient-detail" id="patient-mrn">MRN: --</span>
+                        <span class="patient-detail" id="patient-csn">CSN: --</span>
                     </div>
-                    <span class="text-gray-500 transition-transform">▼</span>
-                </div>
-                <div id="patient-info" class="p-3 text-sm bg-white">
-                    <div id="patient-data-list" class="grid grid-cols-2 gap-y-1 text-sm"></div>
                 </div>
             </div>
 
-            <!-- Vital Signs Section -->
-            <div id="vital-signs-info-wrapper" class="border-b border-gray-200" style="display:none;">
-                <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100">
-                    <div class="flex items-center">
-                        <span class="icon">📋</span>
-                        <span class="ml-2 text-sm font-medium">Recent Vital Signs</span>
-                    </div>
-                    <span class="text-gray-500 transition-transform">▼</span>
+            <div class="header-right">
+                <div class="context-indicators">
+                    <span id="patient-indicator" class="context-indicator enabled" title="Patient Demographics">👤</span>
+                    <span id="vitals-indicator" class="context-indicator enabled" title="Vital Signs">📋</span>
+                    <span id="meds-indicator" class="context-indicator enabled" title="Medications">💊</span>
+                    <span id="encounters-indicator" class="context-indicator enabled" title="Encounters">🏥</span>
+                    <span id="conditions-indicator" class="context-indicator enabled" title="Conditions">🩺</span>
+                    <span id="enhanced-indicator" class="context-indicator enabled" title="Enhanced AI Mode">🤖</span>
                 </div>
-                <div id="vital-signs-info" class="p-3 text-sm bg-white">
-                    <pre id="vital-signs-data" class="text-sm whitespace-pre-line"></pre>
-                </div>
-            </div>
-
-            <!-- Medications Section -->
-            <div id="medications-info-wrapper" class="border-b border-gray-200" style="display:none;">
-                <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100">
-                    <div class="flex items-center">
-                        <span class="icon">💊</span>
-                        <span class="ml-2 text-sm font-medium">Medications</span>
-                    </div>
-                    <span class="text-gray-500 transition-transform">▼</span>
-                </div>
-                <div id="medications-info" class="p-3 text-sm bg-white">
-                    <div id="medications-container" class="space-y-2"></div>
-                </div>
-            </div>
-
-            <!-- Encounters Section -->
-            <div id="encounters-info-wrapper" class="border-b border-gray-200" style="display:none;">
-                <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100">
-                    <div class="flex items-center">
-                        <span class="icon">🏥</span>
-                        <span class="ml-2 text-sm font-medium">Encounters</span>
-                    </div>
-                    <span class="text-gray-500 transition-transform">▼</span>
-                </div>
-                <div id="encounters-info" class="p-3 text-sm bg-white">
-                    <div id="encounters-container" class="space-y-2"></div>
-                </div>
-            </div>
-
-            <!-- Conditions/Problems Section -->
-            <div id="conditions-info-wrapper" class="border-b border-gray-200" style="display:none;">
-                <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100">
-                    <div class="flex items-center">
-                        <span class="icon">🩺</span>
-                        <span class="ml-2 text-sm font-medium">Problems</span>
-                    </div>
-                    <span class="text-gray-500 transition-transform">▼</span>
-                </div>
-                <div id="conditions-info" class="p-3 text-sm bg-white">
-                    <div id="conditions-container" class="space-y-2"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Response Area -->
-        <div id="chat-response" class="p-3 bg-blue-50 border-t border-blue-100 max-h-60 overflow-auto" style="display:none;">
-            <div class="flex justify-between items-start mb-2">
-                <h3 class="text-sm font-medium text-blue-700 flex items-center">
-                    <span class="icon icon-sm">💬</span>
-                    Assistant Response
-                </h3>
-                <button id="clear-response" class="text-gray-400 hover:text-gray-600" title="Clear response">
-                    ✕
+                <button id="data-inspector-toggle" class="inspector-toggle" title="Show data inspector">
+                    <span class="icon">🔍</span>
                 </button>
+                <button id="settings-toggle" class="settings-btn" title="Settings">⚙️</button>
             </div>
-            <div id="chat-response-text" class="text-sm whitespace-pre-line text-gray-800"></div>
+        </header>
+
+        <!-- Settings Panel (Dropdown) -->
+        <div id="settings-panel" class="settings-dropdown" style="display: none;">
+            <div class="settings-content">
+                <h3>Data Sources</h3>
+                <p class="settings-description">Control what data the AI assistant can access</p>
+                
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <input type="checkbox" id="toggle-patient" checked>
+                        <label for="toggle-patient">
+                            <span class="icon">👤</span>
+                            Patient Demographics
+                        </label>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <input type="checkbox" id="toggle-vitals" checked>
+                        <label for="toggle-vitals">
+                            <span class="icon">📋</span>
+                            Vital Signs & Labs
+                        </label>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <input type="checkbox" id="toggle-meds" checked>
+                        <label for="toggle-meds">
+                            <span class="icon">💊</span>
+                            Medications
+                        </label>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <input type="checkbox" id="toggle-encounters" checked>
+                        <label for="toggle-encounters">
+                            <span class="icon">🏥</span>
+                            Encounters & Visits
+                        </label>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <input type="checkbox" id="toggle-conditions" checked>
+                        <label for="toggle-conditions">
+                            <span class="icon">🩺</span>
+                            Conditions & Problems
+                        </label>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <input type="checkbox" id="toggle-enhanced" checked>
+                        <label for="toggle-enhanced">
+                            <span class="icon">🤖</span>
+                            Enhanced AI Mode
+                        </label>
+                        <small>Enable dynamic FHIR querying with function calling</small>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <!-- Input Area -->
-        <div class="p-3 border-t border-gray-200 bg-white">
-            <div class="flex items-center relative">
-                <textarea id="chat-input" placeholder="Ask about this patient..." 
-                    class="w-full rounded-lg border border-gray-300 pl-3 pr-12 py-2 min-h-10 max-h-32 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
-                    rows="1"></textarea>
-                <button id="chat-submit" class="absolute right-2 p-1.5 rounded-md text-blue-500 hover:bg-blue-50" title="Send">
-                    🔍
-                </button>
-            </div>
-            <div class="flex text-xs text-gray-500 mt-1.5 justify-between items-center">
-                <div class="flex space-x-2">
-                    <button class="hover:text-gray-700 flex items-center" title="Copy to clipboard">
-                        <span class="icon icon-sm">📋</span>
-                        Copy
-                    </button>
-                    <button class="hover:text-gray-700 flex items-center" title="Patient summary">
-                        <span class="icon icon-sm">👤</span>
-                        Summary
-                    </button>
+        <!-- Main Layout Container -->
+        <div class="main-layout">
+            <!-- Chat Area (Main Focus) -->
+            <main class="chat-main">
+                <!-- Loading indicator -->
+                <div id="loading" class="loading-overlay" style="display: none;">
+                    <div class="loading-spinner"></div>
+                    <div>Loading patient data...</div>
                 </div>
-                <span>SMART on FHIR enabled</span>
-            </div>
+
+                <!-- Chat Container -->
+                <div class="chat-container">
+                    <!-- Chat History -->
+                    <div id="chat-history" class="chat-history">
+                        <div class="welcome-message">
+                            <div class="welcome-header">
+                                <span class="icon">🤖</span>
+                                <h3>Welcome to EHR Assistant</h3>
+                            </div>
+                            <p>I can help you analyze patient data, answer questions about medications, vitals, conditions, and more. Ask me anything about this patient!</p>
+                            <div class="quick-start">
+                                <div class="suggested-questions">
+                                    <button class="suggested-question">What are the most recent vital signs?</button>
+                                    <button class="suggested-question">Show me all active medications</button>
+                                    <button class="suggested-question">What problems are currently active?</button>
+                                    <button class="suggested-question">Summarize recent visits</button>
+                                    <button class="suggested-question">Are there any concerning trends?</button>
+                                    <button class="suggested-question">Show lab results from the last year</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Chat Input Area -->
+                    <div class="chat-input-container">
+                        <div class="input-wrapper">
+                            <textarea 
+                                id="chat-input" 
+                                placeholder="Ask about this patient's health data..." 
+                                class="chat-input"
+                                rows="1"
+                            ></textarea>
+                            <button id="chat-submit" class="chat-submit" title="Send message">
+                                🔍
+                            </button>
+                        </div>
+                        
+                        <div class="input-footer">
+                            <div class="input-actions">
+                                <button id="clear-chat" class="action-btn" title="Clear conversation">
+                                    <span class="icon">🗑️</span> Clear
+                                </button>
+                                <button id="export-chat" class="action-btn" title="Export conversation">
+                                    <span class="icon">📥</span> Export
+                                </button>
+                            </div>
+                            
+                            <div class="status-info">
+                                <span class="connection-status">🟢 SMART on FHIR Connected</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Data Inspector Sidebar -->
+            <aside id="data-inspector" class="data-inspector" style="display: none;">
+                <div class="inspector-header">
+                    <h3>
+                        <span class="icon">🔍</span>
+                        Data Inspector
+                    </h3>
+                    <button id="inspector-close" class="close-btn">✕</button>
+                </div>
+                
+                <div class="inspector-content">
+                    <div class="inspector-description">
+                        <p>This panel shows the raw FHIR data that the AI searched and used to generate responses.</p>
+                    </div>
+                    
+                    <!-- Search History -->
+                    <div class="search-history-section">
+                        <h4>Recent Searches</h4>
+                        <div id="search-history" class="search-history">
+                            <div class="no-searches">No searches yet. Ask the AI a question to see FHIR queries here.</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Raw Data Viewer -->
+                    <div class="raw-data-section">
+                        <h4>Raw FHIR Data</h4>
+                        <div class="data-viewer-controls">
+                            <select id="data-viewer-select">
+                                <option value="">Select a search result to view</option>
+                            </select>
+                            <button id="copy-raw-data" class="copy-btn" title="Copy raw data">📋</button>
+                        </div>
+                        <div id="raw-data-viewer" class="raw-data-viewer">
+                            <div class="no-data">Select a search result above to view raw FHIR data</div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
         </div>
 
         <!-- Hidden sections for OAuth/debugging info (keep these for functionality) -->
@@ -198,6 +225,7 @@
             </div>
         </div>
     </div>
+    
     <script type="module" src="/src/main.js"></script>
 </body>
 
