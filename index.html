@@ -9,84 +9,194 @@
 </head>
 
 <body>
-    <div id="app">
-        <h1>SMART on FHIR App</h1>
-        <div id="loading">Loading...</div>
+    <div id="app" class="flex flex-col h-screen bg-white w-full max-w-md shadow-md overflow-hidden border-l border-gray-200">
+        <!-- Header -->
+        <div class="px-4 py-3 bg-blue-600 text-white flex justify-between items-center">
+            <h1 class="text-lg font-semibold flex items-center">
+                <span class="icon icon-lg">💬</span>
+                EHR Assistant
+            </h1>
+            <button id="settings-btn" class="p-1 rounded hover:bg-blue-700 transition-colors" title="Settings">
+                ⚙️
+            </button>
+        </div>
 
-        <details id="patient-info-wrapper" style="display:none;">
-            <summary>
-                <h2>Patient Data</h2>
-            </summary>
-            <div id="patient-info">
-                <ul id="patient-data-list"></ul>
+        <!-- Settings panel -->
+        <div id="settings-panel" class="p-3 bg-gray-50 border-b border-gray-200" style="display: none;">
+            <h2 class="text-sm font-medium text-gray-700 mb-2">Data Sources for Context</h2>
+            <div class="space-y-1">
+                <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-patient">
+                    <span id="patient-checkbox" class="text-blue-500 mr-2">☑️</span>
+                    <span class="flex items-center text-sm">
+                        <span class="icon">👤</span>
+                        <span>Demographics</span>
+                    </span>
+                </div>
+                <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-vitals">
+                    <span id="vitals-checkbox" class="text-blue-500 mr-2">☑️</span>
+                    <span class="flex items-center text-sm">
+                        <span class="icon">📋</span>
+                        <span>Vital Signs</span>
+                    </span>
+                </div>
+                <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-meds">
+                    <span id="meds-checkbox" class="text-blue-500 mr-2">☑️</span>
+                    <span class="flex items-center text-sm">
+                        <span class="icon">💊</span>
+                        <span>Medications</span>
+                    </span>
+                </div>
+                <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-encounters">
+                    <span id="encounters-checkbox" class="text-blue-500 mr-2">☑️</span>
+                    <span class="flex items-center text-sm">
+                        <span class="icon">🏥</span>
+                        <span>Encounters</span>
+                    </span>
+                </div>
+                <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-conditions">
+                    <span id="conditions-checkbox" class="text-blue-500 mr-2">☑️</span>
+                    <span class="flex items-center text-sm">
+                        <span class="icon">🩺</span>
+                        <span>Problems</span>
+                    </span>
+                </div>
             </div>
-        </details>
+        </div>
 
-        <details id="vital-signs-info-wrapper" style="display:none;">
-            <summary>
-                <h2>Recent Vital Signs</h2>
-            </summary>
-            <div id="vital-signs-info">
-                <pre id="vital-signs-data"></pre>
+        <!-- Loading indicator -->
+        <div id="loading" class="p-3 text-center text-gray-500">Loading...</div>
+
+        <!-- Error section -->
+        <div id="error-info-wrapper" style="display:none; color: red;" class="p-3 border-b border-gray-200">
+            <h3 class="text-sm font-medium text-red-700 mb-2">Error</h3>
+            <div id="error-info" class="text-sm"></div>
+        </div>
+
+        <!-- Data Preview Sections -->
+        <div class="flex-1 overflow-auto" id="data-sections">
+            <!-- Patient Demographics Section -->
+            <div id="patient-info-wrapper" class="border-b border-gray-200" style="display:none;">
+                <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100">
+                    <div class="flex items-center">
+                        <span class="icon">👤</span>
+                        <span class="ml-2 text-sm font-medium">Demographics</span>
+                    </div>
+                    <span class="text-gray-500 transition-transform">▼</span>
+                </div>
+                <div id="patient-info" class="p-3 text-sm bg-white">
+                    <div id="patient-data-list" class="grid grid-cols-2 gap-y-1 text-sm"></div>
+                </div>
             </div>
-        </details>
 
-        <details id="medications-info-wrapper" style="display:none;">
-            <summary>
-                <h2>Medications</h2>
-            </summary>
-            <div id="medications-info">
-                <table id="medications-table">
-                    <thead>
-                        <tr>
-                            <th>Medication</th>
-                            <th>Status</th>
-                            <th>Date Written</th>
-                            <th>Provider</th>
-                            <th>Instructions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+            <!-- Vital Signs Section -->
+            <div id="vital-signs-info-wrapper" class="border-b border-gray-200" style="display:none;">
+                <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100">
+                    <div class="flex items-center">
+                        <span class="icon">📋</span>
+                        <span class="ml-2 text-sm font-medium">Recent Vital Signs</span>
+                    </div>
+                    <span class="text-gray-500 transition-transform">▼</span>
+                </div>
+                <div id="vital-signs-info" class="p-3 text-sm bg-white">
+                    <pre id="vital-signs-data" class="text-sm whitespace-pre-line"></pre>
+                </div>
             </div>
-        </details>
 
-        <details id="launch-token-data-wrapper" style="display:none;">
-            <summary>
-                <h3>Launch Token Info</h3>
-            </summary>
-            <pre id="launch-token-json"></pre>
-        </details>
+            <!-- Medications Section -->
+            <div id="medications-info-wrapper" class="border-b border-gray-200" style="display:none;">
+                <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100">
+                    <div class="flex items-center">
+                        <span class="icon">💊</span>
+                        <span class="ml-2 text-sm font-medium">Medications</span>
+                    </div>
+                    <span class="text-gray-500 transition-transform">▼</span>
+                </div>
+                <div id="medications-info" class="p-3 text-sm bg-white">
+                    <div id="medications-container" class="space-y-2"></div>
+                </div>
+            </div>
 
-        <details id="auth-details-wrapper" style="display:none;">
-            <summary>
-                <h3>Auth Details (for debugging)</h3>
-            </summary>
-            <p>Access Token: <code id="access-token-display"></code></p>
-            <p>Patient ID: <code id="patient-id-display"></code></p>
-            <p>FHIR Server (iss): <code id="fhir-server-display"></code></p>
-            <h4>Full Token Response:</h4>
-            <pre id="token-response-display"></pre>
-        </details>
+            <!-- Encounters Section -->
+            <div id="encounters-info-wrapper" class="border-b border-gray-200" style="display:none;">
+                <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100">
+                    <div class="flex items-center">
+                        <span class="icon">🏥</span>
+                        <span class="ml-2 text-sm font-medium">Encounters</span>
+                    </div>
+                    <span class="text-gray-500 transition-transform">▼</span>
+                </div>
+                <div id="encounters-info" class="p-3 text-sm bg-white">
+                    <div id="encounters-container" class="space-y-2"></div>
+                </div>
+            </div>
 
-        <details id="error-info-wrapper" style="display:none; color: red;">
-            <summary>
-                <h3>Error</h3>
-            </summary>
-            <div id="error-info"></div>
-        </details>
+            <!-- Conditions/Problems Section -->
+            <div id="conditions-info-wrapper" class="border-b border-gray-200" style="display:none;">
+                <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100">
+                    <div class="flex items-center">
+                        <span class="icon">🩺</span>
+                        <span class="ml-2 text-sm font-medium">Problems</span>
+                    </div>
+                    <span class="text-gray-500 transition-transform">▼</span>
+                </div>
+                <div id="conditions-info" class="p-3 text-sm bg-white">
+                    <div id="conditions-container" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
 
-        <!-- Chat Section -->
-<details id="chat-section-wrapper" style="display:block;">
-  <summary><h2>Chat with AI (OpenAI GPT-3.5/4)</h2></summary>
-  <div id="chat-history" style="text-align:left; margin-bottom: 1em;"></div>
-  <form id="chat-form" style="display:flex;gap:0.5em;justify-content:center;">
-    <input type="text" id="chat-input" autocomplete="off" style="flex:1;" placeholder="Type your message...">
-    <!-- API key field can be removed if you want -->
-  </form>
-</details>
+        <!-- Response Area -->
+        <div id="chat-response" class="p-3 bg-blue-50 border-t border-blue-100 max-h-60 overflow-auto" style="display:none;">
+            <div class="flex justify-between items-start mb-2">
+                <h3 class="text-sm font-medium text-blue-700 flex items-center">
+                    <span class="icon icon-sm">💬</span>
+                    Assistant Response
+                </h3>
+                <button id="clear-response" class="text-gray-400 hover:text-gray-600" title="Clear response">
+                    ✕
+                </button>
+            </div>
+            <div id="chat-response-text" class="text-sm whitespace-pre-line text-gray-800"></div>
+        </div>
 
+        <!-- Input Area -->
+        <div class="p-3 border-t border-gray-200 bg-white">
+            <div class="flex items-center relative">
+                <textarea id="chat-input" placeholder="Ask about this patient..." 
+                    class="w-full rounded-lg border border-gray-300 pl-3 pr-12 py-2 min-h-10 max-h-32 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+                    rows="1"></textarea>
+                <button id="chat-submit" class="absolute right-2 p-1.5 rounded-md text-blue-500 hover:bg-blue-50" title="Send">
+                    🔍
+                </button>
+            </div>
+            <div class="flex text-xs text-gray-500 mt-1.5 justify-between items-center">
+                <div class="flex space-x-2">
+                    <button class="hover:text-gray-700 flex items-center" title="Copy to clipboard">
+                        <span class="icon icon-sm">📋</span>
+                        Copy
+                    </button>
+                    <button class="hover:text-gray-700 flex items-center" title="Patient summary">
+                        <span class="icon icon-sm">👤</span>
+                        Summary
+                    </button>
+                </div>
+                <span>SMART on FHIR enabled</span>
+            </div>
+        </div>
 
+        <!-- Hidden sections for OAuth/debugging info (keep these for functionality) -->
+        <div style="display:none;">
+            <div id="launch-token-data-wrapper">
+                <pre id="launch-token-json"></pre>
+            </div>
+            <div id="auth-details-wrapper">
+                <p>Access Token: <code id="access-token-display"></code></p>
+                <p>Patient ID: <code id="patient-id-display"></code></p>
+                <p>FHIR Server (iss): <code id="fhir-server-display"></code></p>
+                <h4>Full Token Response:</h4>
+                <pre id="token-response-display"></pre>
+            </div>
+        </div>
     </div>
     <script type="module" src="/src/main.js"></script>
 </body>
