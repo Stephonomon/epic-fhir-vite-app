@@ -1,4 +1,4 @@
-// src/main.js - Enhanced desktop layout with sidebar + main area
+// src/main.js - Streamlined layout with data validation sidebar
 import './style.css';
 import FHIR from 'fhirclient';
 import { fetchResource } from './fhirClient.js';
@@ -37,10 +37,10 @@ let enhancedChat = null;
 
 // --- UI State ---
 let contextConfig = { 
-  vitalsCount: 5, 
-  medsCount: 5, 
-  encounterCount: 5,
-  conditionCount: 5,
+  vitalsCount: 10, 
+  medsCount: 10, 
+  encounterCount: 10,
+  conditionCount: 10,
   includePatient: true, 
   includeVitals: true, 
   includeMeds: true,
@@ -48,56 +48,44 @@ let contextConfig = {
   includeConditions: true,
   useEnhancedChat: true
 };
-let sidebarCollapsed = false;
+
 let chatHistory = [];
+let searchHistory = []; // Track FHIR searches for data inspector
+let rawDataCache = {}; // Cache raw FHIR responses
 
 // --- UI Helper Functions ---
 function showLoading(isLoading) {
   const loadingElement = document.getElementById('loading');
   if (loadingElement) {
-    loadingElement.style.display = isLoading ? 'block' : 'none';
+    loadingElement.style.display = isLoading ? 'flex' : 'none';
   }
 }
 
-function toggleSidebar() {
-  const sidebar = document.getElementById('patient-sidebar');
-  const mainArea = document.getElementById('main-area');
-  const toggleBtn = document.getElementById('sidebar-toggle');
+function toggleSettings() {
+  const settingsPanel = document.getElementById('settings-panel');
+  const isVisible = settingsPanel.style.display === 'block';
+  settingsPanel.style.display = isVisible ? 'none' : 'block';
   
-  sidebarCollapsed = !sidebarCollapsed;
-  
-  if (sidebarCollapsed) {
-    sidebar.classList.add('collapsed');
-    mainArea.classList.add('expanded');
-    toggleBtn.innerHTML = '▶️';
-    toggleBtn.title = 'Show patient data';
-  } else {
-    sidebar.classList.remove('collapsed');
-    mainArea.classList.remove('expanded');
-    toggleBtn.innerHTML = '◀️';
-    toggleBtn.title = 'Hide patient data';
+  // Close data inspector if open
+  if (!isVisible) {
+    document.getElementById('data-inspector').style.display = 'none';
   }
 }
 
-function switchDataTab(tabName) {
-  // Hide all tab content
-  const tabContents = document.querySelectorAll('.tab-content');
-  tabContents.forEach(content => content.style.display = 'none');
+function toggleDataInspector() {
+  const inspector = document.getElementById('data-inspector');
+  const settings = document.getElementById('settings-panel');
+  const isVisible = inspector.style.display === 'block';
   
-  // Remove active class from all tabs
-  const tabs = document.querySelectorAll('.tab-btn');
-  tabs.forEach(tab => tab.classList.remove('active'));
+  inspector.style.display = isVisible ? 'none' : 'block';
   
-  // Show selected tab content
-  const selectedContent = document.getElementById(`${tabName}-tab`);
-  if (selectedContent) selectedContent.style.display = 'block';
-  
-  // Add active class to selected tab
-  const selectedTab = document.querySelector(`[data-tab="${tabName}"]`);
-  if (selectedTab) selectedTab.classList.add('active');
+  // Close settings if open
+  if (!isVisible) {
+    settings.style.display = 'none';
+  }
 }
 
-function updateDataSourceIndicators() {
+function updateContextIndicators() {
   const indicators = {
     'patient-indicator': contextConfig.includePatient,
     'vitals-indicator': contextConfig.includeVitals,
@@ -110,10 +98,32 @@ function updateDataSourceIndicators() {
   Object.entries(indicators).forEach(([id, enabled]) => {
     const indicator = document.getElementById(id);
     if (indicator) {
-      indicator.textContent = enabled ? '✓' : '✗';
       indicator.className = `context-indicator ${enabled ? 'enabled' : 'disabled'}`;
     }
   });
+}
+
+function displayPatientHeaderInfo(data, clientContext) {
+  lastPatientData = data;
+  const patientInfo = extractPatientInfo(data, clientContext);
+  
+  // Update header patient info
+  document.getElementById('patient-summary-header').querySelector('.patient-name').textContent = patientInfo.name;
+  document.getElementById('patient-age-gender').textContent = `${calculateAge(patientInfo.birthDate)} / ${patientInfo.gender}`;
+  document.getElementById('patient-mrn').textContent = `PAT ID: ${patientInfo.patId}`;
+  document.getElementById('patient-csn').textContent = `CSN: ${patientInfo.csn}`;
+}
+
+function calculateAge(birthDate) {
+  if (!birthDate || birthDate === 'N/A') return 'Unknown';
+  const birth = new Date(birthDate);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+  return age;
 }
 
 function addChatMessage(role, content, toolCalls = []) {
@@ -127,6 +137,11 @@ function addChatMessage(role, content, toolCalls = []) {
   if (toolCalls && toolCalls.length > 0) {
     const tools = toolCalls.map(call => call.function).join(', ');
     toolInfo = `<div class="tool-usage">🔍 Searched: ${tools}</div>`;
+    
+    // Add to search history for data inspector
+    toolCalls.forEach(call => {
+      addToSearchHistory(call.function, call.parameters || {});
+    });
   }
   
   messageDiv.innerHTML = `
@@ -149,160 +164,84 @@ function addChatMessage(role, content, toolCalls = []) {
   chatHistory.push({ role, content, toolCalls, timestamp });
 }
 
-function displayPatientSummaryCard(data, clientContext) {
-  lastPatientData = data;
-  const container = document.getElementById('patient-summary-card');
-  const patientInfo = extractPatientInfo(data, clientContext);
+function addToSearchHistory(functionName, parameters) {
+  const timestamp = new Date().toLocaleTimeString();
+  const searchId = `search_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
-  container.innerHTML = `
-    <div class="summary-header">
-      <h3>${patientInfo.name}</h3>
-      <span class="patient-id">PAT ID: ${patientInfo.patId}</span>
+  const searchEntry = {
+    id: searchId,
+    timestamp,
+    function: functionName,
+    parameters,
+    status: 'pending'
+  };
+  
+  searchHistory.unshift(searchEntry); // Add to beginning
+  updateSearchHistoryDisplay();
+  
+  return searchId;
+}
+
+function updateSearchHistoryDisplay() {
+  const historyContainer = document.getElementById('search-history');
+  
+  if (searchHistory.length === 0) {
+    historyContainer.innerHTML = '<div class="no-searches">No searches yet. Ask the AI a question to see FHIR queries here.</div>';
+    return;
+  }
+  
+  historyContainer.innerHTML = searchHistory.slice(0, 10).map(search => `
+    <div class="search-entry ${search.status}" data-search-id="${search.id}">
+      <div class="search-header">
+        <span class="search-function">${search.function}</span>
+        <span class="search-time">${search.timestamp}</span>
+      </div>
+      <div class="search-params">${Object.keys(search.parameters).length ? 
+        Object.entries(search.parameters).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ') : 
+        'No parameters'}</div>
+      <div class="search-status">${search.status}</div>
     </div>
-    <div class="summary-grid">
-      <div class="summary-item">
-        <label>Age/Gender:</label>
-        <span>${calculateAge(patientInfo.birthDate)} / ${patientInfo.gender}</span>
-      </div>
-      <div class="summary-item">
-        <label>DOB:</label>
-        <span>${patientInfo.birthDate}</span>
-      </div>
-      <div class="summary-item">
-        <label>CSN:</label>
-        <span>${patientInfo.csn}</span>
-      </div>
-      <div class="summary-item">
-        <label>Phone:</label>
-        <span>${patientInfo.phone}</span>
+  `).join('');
+  
+  // Update data viewer dropdown
+  updateDataViewerOptions();
+}
+
+function updateDataViewerOptions() {
+  const select = document.getElementById('data-viewer-select');
+  const completedSearches = searchHistory.filter(s => s.status === 'completed');
+  
+  select.innerHTML = '<option value="">Select a search result to view</option>';
+  
+  completedSearches.forEach(search => {
+    const option = document.createElement('option');
+    option.value = search.id;
+    option.textContent = `${search.function} (${search.timestamp})`;
+    select.appendChild(option);
+  });
+}
+
+function showRawData(searchId) {
+  const rawDataViewer = document.getElementById('raw-data-viewer');
+  const search = searchHistory.find(s => s.id === searchId);
+  const rawData = rawDataCache[searchId];
+  
+  if (!search || !rawData) {
+    rawDataViewer.innerHTML = '<div class="no-data">No data available for this search</div>';
+    return;
+  }
+  
+  rawDataViewer.innerHTML = `
+    <div class="raw-data-header">
+      <h5>${search.function}</h5>
+      <div class="data-meta">
+        <span>Time: ${search.timestamp}</span>
+        <span>Entries: ${rawData.entry?.length || 0}</span>
+        <span>Total: ${rawData.total || 'Unknown'}</span>
       </div>
     </div>
+    <pre class="json-viewer">${JSON.stringify(rawData, null, 2)}</pre>
   `;
-}
-
-function calculateAge(birthDate) {
-  if (!birthDate || birthDate === 'N/A') return 'Unknown';
-  const birth = new Date(birthDate);
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const monthDiff = today.getMonth() - birth.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-    age--;
-  }
-  return age;
-}
-
-function displayDataPreview(dataType, data, count) {
-  const container = document.getElementById(`${dataType}-preview`);
-  if (!container) return;
-  
-  let previewContent = '';
-  
-  switch (dataType) {
-    case 'vitals':
-      const vitals = processVitalSigns(data, 3);
-      previewContent = vitals.slice(0, 3).map(v => 
-        `<div class="preview-item">${v.name}: <strong>${v.value}</strong></div>`
-      ).join('');
-      break;
-      
-    case 'meds':
-      const meds = processMedications(data, 3);
-      previewContent = meds.slice(0, 3).map(m => 
-        `<div class="preview-item">${m.name} <span class="status-${m.status}">${m.status}</span></div>`
-      ).join('');
-      break;
-      
-    case 'encounters':
-      const encounters = processEncounters(data, 3);
-      previewContent = encounters.slice(0, 3).map(e => 
-        `<div class="preview-item">${e.type} - ${e.period.start}</div>`
-      ).join('');
-      break;
-      
-    case 'conditions':
-      const conditions = processConditions(data, 3);
-      previewContent = conditions.slice(0, 3).map(c => 
-        `<div class="preview-item">${c.code} <span class="status-${c.clinicalStatus.toLowerCase()}">${c.clinicalStatus}</span></div>`
-      ).join('');
-      break;
-  }
-  
-  container.innerHTML = previewContent || '<div class="preview-item">No data available</div>';
-}
-
-function displayFullDataTab(dataType, data) {
-  const container = document.getElementById(`${dataType}-full-data`);
-  if (!container) return;
-  
-  let fullContent = '';
-  
-  switch (dataType) {
-    case 'vitals':
-      const vitals = processVitalSigns(data, 20);
-      fullContent = `
-        <div class="data-table">
-          ${vitals.map(v => `
-            <div class="data-row">
-              <div class="data-cell-main">${v.name}</div>
-              <div class="data-cell-value">${v.value}</div>
-              <div class="data-cell-date">${v.date}</div>
-            </div>
-          `).join('')}
-        </div>
-      `;
-      break;
-      
-    case 'meds':
-      const meds = processMedications(data, 20);
-      fullContent = `
-        <div class="data-table">
-          ${meds.map(m => `
-            <div class="data-row">
-              <div class="data-cell-main">${m.name}</div>
-              <div class="data-cell-value">${m.dosage.formatted}</div>
-              <div class="data-cell-status status-${m.status}">${m.status}</div>
-              <div class="data-cell-date">${m.date}</div>
-            </div>
-          `).join('')}
-        </div>
-      `;
-      break;
-      
-    case 'encounters':
-      const encounters = processEncounters(data, 20);
-      fullContent = `
-        <div class="data-table">
-          ${encounters.map(e => `
-            <div class="data-row">
-              <div class="data-cell-main">${e.type}</div>
-              <div class="data-cell-value">${e.location}</div>
-              <div class="data-cell-status status-${e.status}">${e.status}</div>
-              <div class="data-cell-date">${e.period.formatted}</div>
-            </div>
-          `).join('')}
-        </div>
-      `;
-      break;
-      
-    case 'conditions':
-      const conditions = processConditions(data, 20);
-      fullContent = `
-        <div class="data-table">
-          ${conditions.map(c => `
-            <div class="data-row">
-              <div class="data-cell-main">${c.code}</div>
-              <div class="data-cell-value">${c.category}</div>
-              <div class="data-cell-status status-${c.clinicalStatus.toLowerCase()}">${c.clinicalStatus}</div>
-              <div class="data-cell-date">${c.onsetDate !== 'Unknown' ? c.onsetDate : c.recordedDate}</div>
-            </div>
-          `).join('')}
-        </div>
-      `;
-      break;
-  }
-  
-  container.innerHTML = fullContent;
 }
 
 function displayError(message, errorObj = null) {
@@ -313,22 +252,27 @@ function displayError(message, errorObj = null) {
 
 // --- Setup UI Event Listeners ---
 function setupUIListeners() {
-  // Sidebar toggle
-  const sidebarToggle = document.getElementById('sidebar-toggle');
-  if (sidebarToggle) {
-    sidebarToggle.addEventListener('click', toggleSidebar);
+  // Settings toggle
+  const settingsToggle = document.getElementById('settings-toggle');
+  if (settingsToggle) {
+    settingsToggle.addEventListener('click', toggleSettings);
   }
   
-  // Tab switching
-  const tabButtons = document.querySelectorAll('.tab-btn');
-  tabButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tabName = btn.getAttribute('data-tab');
-      switchDataTab(tabName);
-    });
-  });
+  // Data inspector toggle
+  const inspectorToggle = document.getElementById('data-inspector-toggle');
+  if (inspectorToggle) {
+    inspectorToggle.addEventListener('click', toggleDataInspector);
+  }
   
-  // Context toggles
+  // Inspector close button
+  const inspectorClose = document.getElementById('inspector-close');
+  if (inspectorClose) {
+    inspectorClose.addEventListener('click', () => {
+      document.getElementById('data-inspector').style.display = 'none';
+    });
+  }
+  
+  // Context toggles (checkboxes)
   const toggles = {
     'toggle-patient': () => { contextConfig.includePatient = !contextConfig.includePatient; },
     'toggle-vitals': () => { contextConfig.includeVitals = !contextConfig.includeVitals; },
@@ -346,9 +290,9 @@ function setupUIListeners() {
   Object.entries(toggles).forEach(([id, handler]) => {
     const element = document.getElementById(id);
     if (element) {
-      element.addEventListener('click', () => {
+      element.addEventListener('change', () => {
         handler();
-        updateDataSourceIndicators();
+        updateContextIndicators();
       });
     }
   });
@@ -359,7 +303,42 @@ function setupUIListeners() {
     clearChatBtn.addEventListener('click', () => {
       document.getElementById('chat-history').innerHTML = '';
       chatHistory = [];
+      searchHistory = [];
+      rawDataCache = {};
+      updateSearchHistoryDisplay();
       if (enhancedChat) enhancedChat.clearConversation();
+      
+      // Add welcome message back
+      addWelcomeMessage();
+    });
+  }
+  
+  // Export chat
+  const exportChatBtn = document.getElementById('export-chat');
+  if (exportChatBtn) {
+    exportChatBtn.addEventListener('click', exportChatHistory);
+  }
+  
+  // Data viewer dropdown
+  const dataViewerSelect = document.getElementById('data-viewer-select');
+  if (dataViewerSelect) {
+    dataViewerSelect.addEventListener('change', (e) => {
+      if (e.target.value) {
+        showRawData(e.target.value);
+      }
+    });
+  }
+  
+  // Copy raw data button
+  const copyRawDataBtn = document.getElementById('copy-raw-data');
+  if (copyRawDataBtn) {
+    copyRawDataBtn.addEventListener('click', () => {
+      const searchId = document.getElementById('data-viewer-select').value;
+      if (searchId && rawDataCache[searchId]) {
+        navigator.clipboard.writeText(JSON.stringify(rawDataCache[searchId], null, 2));
+        copyRawDataBtn.innerHTML = '✓';
+        setTimeout(() => copyRawDataBtn.innerHTML = '📋', 1000);
+      }
     });
   }
   
@@ -372,6 +351,66 @@ function setupUIListeners() {
       handleChatSubmit();
     });
   });
+  
+  // Close dropdowns when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#settings-panel') && !e.target.closest('#settings-toggle')) {
+      document.getElementById('settings-panel').style.display = 'none';
+    }
+  });
+}
+
+function addWelcomeMessage() {
+  const welcomeHTML = `
+    <div class="welcome-message">
+      <div class="welcome-header">
+        <span class="icon">🤖</span>
+        <h3>Welcome to EHR Assistant</h3>
+      </div>
+      <p>I can help you analyze patient data, answer questions about medications, vitals, conditions, and more. Ask me anything about this patient!</p>
+      <div class="quick-start">
+        <div class="suggested-questions">
+          <button class="suggested-question">What are the most recent vital signs?</button>
+          <button class="suggested-question">Show me all active medications</button>
+          <button class="suggested-question">What problems are currently active?</button>
+          <button class="suggested-question">Summarize recent visits</button>
+          <button class="suggested-question">Are there any concerning trends?</button>
+          <button class="suggested-question">Show lab results from the last year</button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.getElementById('chat-history').innerHTML = welcomeHTML;
+  
+  // Re-attach event listeners for suggested questions
+  const suggestedQuestions = document.querySelectorAll('.suggested-question');
+  suggestedQuestions.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const question = btn.textContent.trim();
+      document.getElementById('chat-input').value = question;
+      handleChatSubmit();
+    });
+  });
+}
+
+function exportChatHistory() {
+  const exportData = {
+    patient: lastPatientData ? extractPatientInfo(lastPatientData, smartClientContext) : null,
+    chatHistory: chatHistory,
+    searchHistory: searchHistory,
+    timestamp: new Date().toISOString()
+  };
+  
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ehr-assistant-chat-${new Date().toISOString().split('T')[0]}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // --- Chat Integration ---
@@ -418,6 +457,39 @@ async function handleChatSubmit() {
     
     if (contextConfig.useEnhancedChat && enhancedChat) {
       console.log('Using enhanced chat mode');
+      
+      // Patch the enhanced chat to capture search data
+      const originalExecuteTool = enhancedChat.fhirTools.executeTool.bind(enhancedChat.fhirTools);
+      enhancedChat.fhirTools.executeTool = async function(toolName, parameters) {
+        const searchId = addToSearchHistory(toolName, parameters);
+        
+        try {
+          const result = await originalExecuteTool(toolName, parameters);
+          
+          // Cache the raw data
+          rawDataCache[searchId] = result;
+          
+          // Update search status
+          const searchEntry = searchHistory.find(s => s.id === searchId);
+          if (searchEntry) {
+            searchEntry.status = 'completed';
+            searchEntry.resultCount = result.count || result.observations?.length || result.medications?.length || result.encounters?.length || result.conditions?.length || result.reports?.length || 0;
+          }
+          
+          updateSearchHistoryDisplay();
+          return result;
+        } catch (error) {
+          // Update search status on error
+          const searchEntry = searchHistory.find(s => s.id === searchId);
+          if (searchEntry) {
+            searchEntry.status = 'error';
+            searchEntry.error = error.message;
+          }
+          updateSearchHistoryDisplay();
+          throw error;
+        }
+      };
+      
       aiResp = await enhancedChat.getChatResponse(message, true);
       addChatMessage('assistant', aiResp.content, aiResp.toolCalls);
     } else {
@@ -451,7 +523,7 @@ async function fetchPatientData(client) {
   showLoading(true);
   try {
     const data = await fetchResource({ client, path: `Patient/${client.patient.id}`, backendUrl: BACKEND_PROXY_URL });
-    displayPatientSummaryCard(data, client);
+    displayPatientHeaderInfo(data, client);
     console.log("Patient data loaded");
   } catch (e) {
     displayError(`Failed to fetch patient data: ${e.message}`, e);
@@ -462,11 +534,9 @@ async function fetchPatientData(client) {
 
 async function fetchVitalSigns(client) {
   try {
-    const data = await fetchResource({ client, path: 'Observation?category=vital-signs&_sort=-date&_count=20', backendUrl: BACKEND_PROXY_URL });
+    const data = await fetchResource({ client, path: 'Observation?category=vital-signs&_sort=-date&_count=50', backendUrl: BACKEND_PROXY_URL });
     lastVitalsData = data;
-    displayDataPreview('vitals', data);
-    displayFullDataTab('vitals', data);
-    console.log("Vitals data loaded");
+    console.log("Vitals data loaded:", data?.entry?.length || 0, "entries");
   } catch (e) {
     console.error(`Failed to fetch vital signs: ${e.message}`, e);
   }
@@ -474,11 +544,9 @@ async function fetchVitalSigns(client) {
 
 async function fetchMedications(client) {
   try {
-    const data = await fetchResource({ client, path: 'MedicationRequest?_sort=-authoredon&_count=20', backendUrl: BACKEND_PROXY_URL });
+    const data = await fetchResource({ client, path: 'MedicationRequest?_sort=-authoredon&_count=50', backendUrl: BACKEND_PROXY_URL });
     lastMedicationsData = data;
-    displayDataPreview('meds', data);
-    displayFullDataTab('meds', data);
-    console.log("Medications data loaded");
+    console.log("Medications data loaded:", data?.entry?.length || 0, "entries");
   } catch (e) {
     console.error(`Failed to fetch medications: ${e.message}`, e);
   }
@@ -486,11 +554,9 @@ async function fetchMedications(client) {
 
 async function fetchEncounters(client) {
   try {
-    const data = await fetchResource({ client, path: 'Encounter?_sort=-date&_count=20', backendUrl: BACKEND_PROXY_URL });
+    const data = await fetchResource({ client, path: 'Encounter?_sort=-date&_count=50', backendUrl: BACKEND_PROXY_URL });
     lastEncounterData = data;
-    displayDataPreview('encounters', data);
-    displayFullDataTab('encounters', data);
-    console.log("Encounters data loaded");
+    console.log("Encounters data loaded:", data?.entry?.length || 0, "entries");
   } catch (e) {
     console.error(`Failed to fetch encounters: ${e.message}`, e);
   }
@@ -501,35 +567,31 @@ async function fetchConditions(client) {
     const patientReference = `Patient/${client.patient.id}`;
     const data = await fetchResource({ 
       client, 
-      path: `Condition?patient=${encodeURIComponent(patientReference)}&_count=20`, 
+      path: `Condition?patient=${encodeURIComponent(patientReference)}&_count=50`, 
       backendUrl: BACKEND_PROXY_URL 
     }).catch(async (firstError) => {
       console.warn("First attempt failed:", firstError.message);
       try {
         return await fetchResource({ 
           client, 
-          path: `Condition?patient=${encodeURIComponent(patientReference)}&category=problem-list-item&_count=20`, 
+          path: `Condition?patient=${encodeURIComponent(patientReference)}&category=problem-list-item&_count=50`, 
           backendUrl: BACKEND_PROXY_URL 
         });
       } catch (secondError) {
         console.warn("Second attempt failed:", secondError.message);
         return await fetchResource({ 
           client, 
-          path: `Condition?patient=${encodeURIComponent(patientReference)}&clinical-status=active&_count=20`, 
+          path: `Condition?patient=${encodeURIComponent(patientReference)}&clinical-status=active&_count=50`, 
           backendUrl: BACKEND_PROXY_URL 
         });
       }
     });
     
     lastConditionData = data;
-    displayDataPreview('conditions', data);
-    displayFullDataTab('conditions', data);
-    console.log("Conditions data loaded");
+    console.log("Conditions data loaded:", data?.entry?.length || 0, "entries");
   } catch (e) {
     console.error(`Failed to fetch conditions: ${e.message}`, e);
     lastConditionData = { entry: [] };
-    displayDataPreview('conditions', lastConditionData);
-    displayFullDataTab('conditions', lastConditionData);
   }
 }
 
@@ -555,7 +617,8 @@ function isAbsoluteUrl(url) {
 // --- Main Initialization ---
 function init() {
   setupUIListeners();
-  updateDataSourceIndicators();
+  updateContextIndicators();
+  addWelcomeMessage();
   
   const params = new URLSearchParams(window.location.search);
   const launchToken = params.get('launch');
@@ -572,7 +635,7 @@ function init() {
           console.log('Enhanced FHIR chat initialized');
         }
         
-        // Load all data
+        // Load all data in background
         await fetchPatientData(client);
         await Promise.all([
           fetchVitalSigns(client),
@@ -582,9 +645,6 @@ function init() {
         ]);
         
         setupChat();
-        
-        // Show overview tab by default
-        switchDataTab('overview');
         
         console.log("All patient data loaded successfully");
       })

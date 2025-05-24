@@ -9,154 +9,107 @@
 </head>
 
 <body>
-    <div id="app" class="desktop-layout">
-        <!-- Main Header -->
+    <div id="app" class="streamlined-layout">
+        <!-- Main Header with Patient Info -->
         <header class="app-header">
             <div class="header-left">
-                <button id="sidebar-toggle" class="sidebar-toggle" title="Hide patient data">◀️</button>
                 <h1 class="app-title">
                     <span class="icon">💬</span>
                     EHR Assistant
                 </h1>
             </div>
+            
+            <!-- Patient Info Section (like user info) -->
+            <div class="patient-header-info">
+                <div id="patient-summary-header" class="patient-summary-compact">
+                    <div class="patient-name">Loading Patient...</div>
+                    <div class="patient-details">
+                        <span class="patient-detail" id="patient-age-gender">-- / --</span>
+                        <span class="patient-detail" id="patient-mrn">MRN: --</span>
+                        <span class="patient-detail" id="patient-csn">CSN: --</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="header-right">
                 <div class="context-indicators">
-                    <span id="patient-indicator" class="context-indicator enabled">✓</span>
-                    <span id="vitals-indicator" class="context-indicator enabled">✓</span>
-                    <span id="meds-indicator" class="context-indicator enabled">✓</span>
-                    <span id="encounters-indicator" class="context-indicator enabled">✓</span>
-                    <span id="conditions-indicator" class="context-indicator enabled">✓</span>
-                    <span id="enhanced-indicator" class="context-indicator enabled">✓</span>
+                    <span id="patient-indicator" class="context-indicator enabled" title="Patient Demographics">👤</span>
+                    <span id="vitals-indicator" class="context-indicator enabled" title="Vital Signs">📋</span>
+                    <span id="meds-indicator" class="context-indicator enabled" title="Medications">💊</span>
+                    <span id="encounters-indicator" class="context-indicator enabled" title="Encounters">🏥</span>
+                    <span id="conditions-indicator" class="context-indicator enabled" title="Conditions">🩺</span>
+                    <span id="enhanced-indicator" class="context-indicator enabled" title="Enhanced AI Mode">🤖</span>
                 </div>
-                <button class="settings-btn">⚙️</button>
+                <button id="data-inspector-toggle" class="inspector-toggle" title="Show data inspector">
+                    <span class="icon">🔍</span>
+                </button>
+                <button id="settings-toggle" class="settings-btn" title="Settings">⚙️</button>
             </div>
         </header>
 
-        <!-- Main Layout Container -->
-        <div class="layout-container">
-            <!-- Patient Data Sidebar -->
-            <aside id="patient-sidebar" class="patient-sidebar">
-                <!-- Patient Summary Card -->
-                <div id="patient-summary-card" class="patient-summary-card">
-                    <div class="summary-header">
-                        <h3>Loading Patient...</h3>
+        <!-- Settings Panel (Dropdown) -->
+        <div id="settings-panel" class="settings-dropdown" style="display: none;">
+            <div class="settings-content">
+                <h3>Data Sources</h3>
+                <p class="settings-description">Control what data the AI assistant can access</p>
+                
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <input type="checkbox" id="toggle-patient" checked>
+                        <label for="toggle-patient">
+                            <span class="icon">👤</span>
+                            Patient Demographics
+                        </label>
                     </div>
-                </div>
-
-                <!-- Data Preview Cards -->
-                <div class="data-preview-grid">
-                    <div class="preview-card">
-                        <div class="preview-header">
+                    
+                    <div class="setting-item">
+                        <input type="checkbox" id="toggle-vitals" checked>
+                        <label for="toggle-vitals">
                             <span class="icon">📋</span>
-                            <span class="preview-title">Recent Vitals</span>
-                            <span id="toggle-vitals" class="toggle-btn">✓</span>
-                        </div>
-                        <div id="vitals-preview" class="preview-content">
-                            Loading...
-                        </div>
+                            Vital Signs & Labs
+                        </label>
                     </div>
-
-                    <div class="preview-card">
-                        <div class="preview-header">
+                    
+                    <div class="setting-item">
+                        <input type="checkbox" id="toggle-meds" checked>
+                        <label for="toggle-meds">
                             <span class="icon">💊</span>
-                            <span class="preview-title">Current Meds</span>
-                            <span id="toggle-meds" class="toggle-btn">✓</span>
-                        </div>
-                        <div id="meds-preview" class="preview-content">
-                            Loading...
-                        </div>
+                            Medications
+                        </label>
                     </div>
-
-                    <div class="preview-card">
-                        <div class="preview-header">
+                    
+                    <div class="setting-item">
+                        <input type="checkbox" id="toggle-encounters" checked>
+                        <label for="toggle-encounters">
                             <span class="icon">🏥</span>
-                            <span class="preview-title">Recent Visits</span>
-                            <span id="toggle-encounters" class="toggle-btn">✓</span>
-                        </div>
-                        <div id="encounters-preview" class="preview-content">
-                            Loading...
-                        </div>
+                            Encounters & Visits
+                        </label>
                     </div>
-
-                    <div class="preview-card">
-                        <div class="preview-header">
+                    
+                    <div class="setting-item">
+                        <input type="checkbox" id="toggle-conditions" checked>
+                        <label for="toggle-conditions">
                             <span class="icon">🩺</span>
-                            <span class="preview-title">Active Problems</span>
-                            <span id="toggle-conditions" class="toggle-btn">✓</span>
-                        </div>
-                        <div id="conditions-preview" class="preview-content">
-                            Loading...
-                        </div>
+                            Conditions & Problems
+                        </label>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <input type="checkbox" id="toggle-enhanced" checked>
+                        <label for="toggle-enhanced">
+                            <span class="icon">🤖</span>
+                            Enhanced AI Mode
+                        </label>
+                        <small>Enable dynamic FHIR querying with function calling</small>
                     </div>
                 </div>
+            </div>
+        </div>
 
-                <!-- Data Tabs -->
-                <div class="data-tabs">
-                    <div class="tab-header">
-                        <button class="tab-btn active" data-tab="overview">Overview</button>
-                        <button class="tab-btn" data-tab="vitals">Vitals</button>
-                        <button class="tab-btn" data-tab="meds">Medications</button>
-                        <button class="tab-btn" data-tab="encounters">Encounters</button>
-                        <button class="tab-btn" data-tab="conditions">Problems</button>
-                    </div>
-
-                    <!-- Tab Contents -->
-                    <div id="overview-tab" class="tab-content" style="display: block;">
-                        <div class="overview-summary">
-                            <h4>Data Context Settings</h4>
-                            <div class="context-controls">
-                                <div class="context-item">
-                                    <span id="toggle-patient" class="context-toggle">
-                                        <span class="icon">👤</span> Demographics
-                                    </span>
-                                </div>
-                                <div class="context-item">
-                                    <span id="toggle-enhanced" class="context-toggle">
-                                        <span class="icon">🤖</span> Enhanced AI Mode
-                                    </span>
-                                </div>
-                            </div>
-                            
-                            <h4>Suggested Questions</h4>
-                            <div class="suggested-questions">
-                                <button class="suggested-question">What are the patient's most recent vital signs?</button>
-                                <button class="suggested-question">Show me all active medications</button>
-                                <button class="suggested-question">What problems are currently active?</button>
-                                <button class="suggested-question">Summarize recent visits</button>
-                                <button class="suggested-question">Are there any medication interactions?</button>
-                                <button class="suggested-question">Show lab trends over the last year</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="vitals-tab" class="tab-content">
-                        <div id="vitals-full-data" class="full-data-container">
-                            Loading vital signs...
-                        </div>
-                    </div>
-
-                    <div id="meds-tab" class="tab-content">
-                        <div id="meds-full-data" class="full-data-container">
-                            Loading medications...
-                        </div>
-                    </div>
-
-                    <div id="encounters-tab" class="tab-content">
-                        <div id="encounters-full-data" class="full-data-container">
-                            Loading encounters...
-                        </div>
-                    </div>
-
-                    <div id="conditions-tab" class="tab-content">
-                        <div id="conditions-full-data" class="full-data-container">
-                            Loading conditions...
-                        </div>
-                    </div>
-                </div>
-            </aside>
-
-            <!-- Main Chat Area -->
-            <main id="main-area" class="main-area">
+        <!-- Main Layout Container -->
+        <div class="main-layout">
+            <!-- Chat Area (Main Focus) -->
+            <main class="chat-main">
                 <!-- Loading indicator -->
                 <div id="loading" class="loading-overlay" style="display: none;">
                     <div class="loading-spinner"></div>
@@ -174,13 +127,14 @@
                             </div>
                             <p>I can help you analyze patient data, answer questions about medications, vitals, conditions, and more. Ask me anything about this patient!</p>
                             <div class="quick-start">
-                                <strong>Quick Start:</strong>
-                                <ul>
-                                    <li>Ask about recent lab results or vital signs</li>
-                                    <li>Review medication interactions or changes</li>
-                                    <li>Summarize recent visits or diagnoses</li>
-                                    <li>Analyze trends over time</li>
-                                </ul>
+                                <div class="suggested-questions">
+                                    <button class="suggested-question">What are the most recent vital signs?</button>
+                                    <button class="suggested-question">Show me all active medications</button>
+                                    <button class="suggested-question">What problems are currently active?</button>
+                                    <button class="suggested-question">Summarize recent visits</button>
+                                    <button class="suggested-question">Are there any concerning trends?</button>
+                                    <button class="suggested-question">Show lab results from the last year</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -204,7 +158,7 @@
                                 <button id="clear-chat" class="action-btn" title="Clear conversation">
                                     <span class="icon">🗑️</span> Clear
                                 </button>
-                                <button class="action-btn" title="Export conversation">
+                                <button id="export-chat" class="action-btn" title="Export conversation">
                                     <span class="icon">📥</span> Export
                                 </button>
                             </div>
@@ -216,6 +170,45 @@
                     </div>
                 </div>
             </main>
+
+            <!-- Data Inspector Sidebar -->
+            <aside id="data-inspector" class="data-inspector" style="display: none;">
+                <div class="inspector-header">
+                    <h3>
+                        <span class="icon">🔍</span>
+                        Data Inspector
+                    </h3>
+                    <button id="inspector-close" class="close-btn">✕</button>
+                </div>
+                
+                <div class="inspector-content">
+                    <div class="inspector-description">
+                        <p>This panel shows the raw FHIR data that the AI searched and used to generate responses.</p>
+                    </div>
+                    
+                    <!-- Search History -->
+                    <div class="search-history-section">
+                        <h4>Recent Searches</h4>
+                        <div id="search-history" class="search-history">
+                            <div class="no-searches">No searches yet. Ask the AI a question to see FHIR queries here.</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Raw Data Viewer -->
+                    <div class="raw-data-section">
+                        <h4>Raw FHIR Data</h4>
+                        <div class="data-viewer-controls">
+                            <select id="data-viewer-select">
+                                <option value="">Select a search result to view</option>
+                            </select>
+                            <button id="copy-raw-data" class="copy-btn" title="Copy raw data">📋</button>
+                        </div>
+                        <div id="raw-data-viewer" class="raw-data-viewer">
+                            <div class="no-data">Select a search result above to view raw FHIR data</div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
         </div>
 
         <!-- Hidden sections for OAuth/debugging info (keep these for functionality) -->
@@ -237,4 +230,3 @@
 </body>
 
 </html>
-                
