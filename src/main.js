@@ -1,7 +1,9 @@
+// src/main.js - Updated to use enhanced FHIR chat
 import './style.css';
 import FHIR from 'fhirclient';
 import { fetchResource } from './fhirClient.js';
-import { getChatResponse } from './openaiChat.js';
+import { getChatResponse } from './openaiChat.js'; // Keep for fallback
+import { EnhancedFHIRChat } from './openaiChatEnhanced.js'; // New enhanced chat
 import { 
   summarizePatient, 
   summarizeVitals, 
@@ -31,6 +33,7 @@ let lastMedicationsData = null;
 let lastEncounterData = null;
 let lastConditionData = null;
 let smartClientContext = null; // Store the SMART client context
+let enhancedChat = null; // Enhanced chat instance
 
 // --- UI & Chat State ---
 let chatHistory = [];
@@ -43,7 +46,8 @@ let contextConfig = {
   includeVitals: true, 
   includeMeds: true,
   includeEncounters: true,
-  includeConditions: true
+  includeConditions: true,
+  useEnhancedChat: true // New flag for enhanced chat mode
 };
 let expandedSection = 'patient'; // Default expanded section
 let showSettings = false;
@@ -299,8 +303,6 @@ function displayAuthDetails(client) {
     console.log("PAT_ID:", client.state.tokenResponse.pat_id);
     console.log("CSN:", client.state.tokenResponse.csn);
     console.log("Scopes in access token:", client.state.tokenResponse.scope);
-    
-
   }
 }
 
@@ -343,6 +345,23 @@ function setupUIListeners() {
       settingsPanel.style.display = showSettings ? 'block' : 'none';
     });
   }
+
+  // Add enhanced chat toggle
+  const enhancedChatToggle = document.createElement('div');
+  enhancedChatToggle.innerHTML = `
+    <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-enhanced-chat">
+      <span id="enhanced-chat-checkbox" class="text-blue-500 mr-2">☑️</span>
+      <span class="flex items-center text-sm">
+        <span class="icon">🤖</span>
+        <span>Enhanced AI Mode</span>
+      </span>
+    </div>
+  `;
+  
+  const settingsContainer = document.querySelector('#settings-panel .space-y-1');
+  if (settingsContainer) {
+    settingsContainer.appendChild(enhancedChatToggle);
+  }
   
   // Data source toggle handlers - using simple emoji checkboxes
   function updateCheckboxDisplay() {
@@ -351,12 +370,14 @@ function setupUIListeners() {
     const medsCheckbox = document.getElementById('meds-checkbox');
     const encountersCheckbox = document.getElementById('encounters-checkbox');
     const conditionsCheckbox = document.getElementById('conditions-checkbox');
+    const enhancedChatCheckbox = document.getElementById('enhanced-chat-checkbox');
     
     if (patientCheckbox) patientCheckbox.textContent = contextConfig.includePatient ? '☑️' : '☐';
     if (vitalsCheckbox) vitalsCheckbox.textContent = contextConfig.includeVitals ? '☑️' : '☐';
     if (medsCheckbox) medsCheckbox.textContent = contextConfig.includeMeds ? '☑️' : '☐';
     if (encountersCheckbox) encountersCheckbox.textContent = contextConfig.includeEncounters ? '☑️' : '☐';
     if (conditionsCheckbox) conditionsCheckbox.textContent = contextConfig.includeConditions ? '☑️' : '☐';
+    if (enhancedChatCheckbox) enhancedChatCheckbox.textContent = contextConfig.useEnhancedChat ? '☑️' : '☐';
   }
   
   const patientToggle = document.getElementById('toggle-patient');
@@ -364,6 +385,7 @@ function setupUIListeners() {
   const medsToggle = document.getElementById('toggle-meds');
   const encountersToggle = document.getElementById('toggle-encounters');
   const conditionsToggle = document.getElementById('toggle-conditions');
+  const enhancedChatToggle = document.getElementById('toggle-enhanced-chat');
   
   if (patientToggle) {
     patientToggle.addEventListener('click', () => {
@@ -397,6 +419,18 @@ function setupUIListeners() {
     conditionsToggle.addEventListener('click', () => {
       contextConfig.includeConditions = !contextConfig.includeConditions;
       updateCheckboxDisplay();
+    });
+  }
+
+  if (enhancedChatToggle) {
+    enhancedChatToggle.addEventListener('click', () => {
+      contextConfig.useEnhancedChat = !contextConfig.useEnhancedChat;
+      updateCheckboxDisplay();
+      
+      // Initialize enhanced chat when enabled
+      if (contextConfig.useEnhancedChat && smartClientContext) {
+        enhancedChat = new EnhancedFHIRChat(OPENAI_API_KEY, smartClientContext, BACKEND_PROXY_URL);
+      }
     });
   }
   
@@ -544,20 +578,43 @@ function setupChat() {
     responseText.textContent = 'Thinking...';
     
     try {
-      const aiResp = await getChatResponse({
-        chatHistory: [{ role: 'user', content: message }],
-        patient: contextConfig.includePatient ? lastPatientData : null,
-        vitals: contextConfig.includeVitals ? lastVitalsData : null,
-        meds: contextConfig.includeMeds ? lastMedicationsData : null,
-        encounters: contextConfig.includeEncounters ? lastEncounterData : null,
-        conditions: contextConfig.includeConditions ? lastConditionData : null,
-        config: contextConfig,
-        openAiKey: OPENAI_API_KEY,
-        smartContext: smartClientContext // Pass SMART context to chat
-      });
+      let aiResp;
+      
+      if (contextConfig.useEnhancedChat && enhancedChat) {
+        // Use enhanced chat with function calling
+        aiResp = await enhancedChat.getChatResponse(message, true);
+        
+        // Show tool usage indicator if tools were used
+        const toolCalls = aiResp.toolCalls;
+        if (toolCalls && toolCalls.length > 0) {
+          const toolInfo = toolCalls.map(call => call.function).join(', ');
+          console.log(`AI used tools: ${toolInfo}`);
+          
+          // Add a subtle indicator in the UI
+          const toolIndicator = document.createElement('div');
+          toolIndicator.className = 'text-xs text-blue-600 mb-2 flex items-center';
+          toolIndicator.innerHTML = `<span class="icon icon-sm">🔍</span> Searched: ${toolInfo}`;
+          responseText.parentNode.insertBefore(toolIndicator, responseText);
+        }
+      } else {
+        // Fallback to original static chat
+        aiResp = await getChatResponse({
+          chatHistory: [{ role: 'user', content: message }],
+          patient: contextConfig.includePatient ? lastPatientData : null,
+          vitals: contextConfig.includeVitals ? lastVitalsData : null,
+          meds: contextConfig.includeMeds ? lastMedicationsData : null,
+          encounters: contextConfig.includeEncounters ? lastEncounterData : null,
+          conditions: contextConfig.includeConditions ? lastConditionData : null,
+          config: contextConfig,
+          openAiKey: OPENAI_API_KEY,
+          smartContext: smartClientContext
+        });
+      }
       
       responseText.innerHTML = marked.parse(aiResp.content);
+      
     } catch (error) {
+      console.error('Chat error:', error);
       responseText.textContent = `Error: ${error.message}`;
     } finally {
       chatSubmit.innerHTML = '🔍'; // Reset to search icon
@@ -578,6 +635,25 @@ function setupChat() {
     this.style.height = 'auto';
     this.style.height = (this.scrollHeight < 150) ? this.scrollHeight + 'px' : '150px';
   });
+
+  // Add clear conversation button for enhanced chat
+  if (contextConfig.useEnhancedChat) {
+    const clearConversationBtn = document.createElement('button');
+    clearConversationBtn.textContent = 'Clear Chat';
+    clearConversationBtn.className = 'text-xs text-gray-500 hover:text-gray-700';
+    clearConversationBtn.addEventListener('click', () => {
+      if (enhancedChat) {
+        enhancedChat.clearConversation();
+        const responseArea = document.getElementById('chat-response');
+        if (responseArea) responseArea.style.display = 'none';
+      }
+    });
+    
+    const buttonContainer = document.querySelector('.flex.text-xs.text-gray-500.mt-1\\.5');
+    if (buttonContainer) {
+      buttonContainer.appendChild(clearConversationBtn);
+    }
+  }
 }
 
 // --- SMART Launch/EHR Auth Logic ---
@@ -601,6 +677,12 @@ function init() {
         // Store client context globally
         smartClientContext = client;
         
+        // Initialize enhanced chat if enabled
+        if (contextConfig.useEnhancedChat && OPENAI_API_KEY) {
+          enhancedChat = new EnhancedFHIRChat(OPENAI_API_KEY, client, BACKEND_PROXY_URL);
+          console.log('Enhanced FHIR chat initialized');
+        }
+        
         await fetchPatientData(client);
         displayAuthDetails(client);
         displayLaunchTokenData(client);
@@ -620,7 +702,7 @@ function init() {
       showLoading(true);
       FHIR.oauth2.authorize({
         client_id: CLIENT_ID,
-        scope: 'launch launch/patient patient/*.read observation/*.read medication/*.read encounter/*.read condition/*.read openid fhirUser ' +
+        scope: 'launch launch/patient patient/*.read observation/*.read medication/*.read encounter/*.read condition/*.read diagnosticreport/*.read openid fhirUser ' +
                'context-user context-fhirUser context-enc_date context-user_ip context-syslogin ' +
                'context-user_timestamp context-workstation_id context-csn context-pat_id',
         redirect_uri: APP_REDIRECT_URI,
