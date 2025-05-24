@@ -38,11 +38,18 @@ IMPORTANT GUIDELINES:
       }
     }
 
-    // Prepare messages for OpenAI
-    const messages = [
-      { role: "system", content: systemMessage },
-      ...this.conversationHistory.slice(-10) // Keep last 10 messages for context
-    ];
+    // Prepare messages for OpenAI - only include system message on first call
+    let messages;
+    if (this.conversationHistory.length <= 1) {
+      // First message in conversation
+      messages = [
+        { role: "system", content: systemMessage },
+        ...this.conversationHistory
+      ];
+    } else {
+      // Subsequent messages - use conversation history without repeating system message
+      messages = [...this.conversationHistory];
+    }
 
     try {
       // Initial call to OpenAI with function definitions
@@ -50,11 +57,12 @@ IMPORTANT GUIDELINES:
       
       // Handle function calls iteratively
       while (response.choices[0].message.tool_calls) {
-        // Add assistant's message with tool calls to conversation
-        this.conversationHistory.push(response.choices[0].message);
-        messages.push(response.choices[0].message);
+        // Add assistant's message with tool calls to both conversation and current messages
+        const assistantMessage = response.choices[0].message;
+        this.conversationHistory.push(assistantMessage);
+        messages.push(assistantMessage);
 
-        // Execute each tool call
+        // Execute each tool call and add responses
         for (const toolCall of response.choices[0].message.tool_calls) {
           const toolName = toolCall.function.name;
           const toolArgs = JSON.parse(toolCall.function.arguments);
@@ -63,12 +71,15 @@ IMPORTANT GUIDELINES:
           
           const toolResult = await this.fhirTools.executeTool(toolName, toolArgs);
           
-          // Add tool result to messages
-          messages.push({
+          // Add tool result to both conversation and current messages
+          const toolMessage = {
             role: "tool",
             tool_call_id: toolCall.id,
             content: JSON.stringify(toolResult)
-          });
+          };
+          
+          this.conversationHistory.push(toolMessage);
+          messages.push(toolMessage);
         }
 
         // Call OpenAI again with tool results
@@ -87,6 +98,8 @@ IMPORTANT GUIDELINES:
 
     } catch (error) {
       console.error('Error in enhanced chat:', error);
+      console.error('Conversation history at error:', this.conversationHistory);
+      console.error('Messages at error:', messages);
       throw new Error(`Chat error: ${error.message}`);
     }
   }
@@ -142,10 +155,46 @@ IMPORTANT GUIDELINES:
 
   clearConversation() {
     this.conversationHistory = [];
+    console.log('Conversation history cleared');
   }
 
   getConversationHistory() {
-    return this.conversationHistory;
+    return [...this.conversationHistory]; // Return a copy to avoid mutations
+  }
+
+  // Helper method to validate conversation history
+  validateConversationHistory() {
+    for (let i = 0; i < this.conversationHistory.length; i++) {
+      const message = this.conversationHistory[i];
+      
+      // Check if assistant message with tool_calls is followed by tool messages
+      if (message.role === 'assistant' && message.tool_calls) {
+        const toolCallIds = message.tool_calls.map(tc => tc.id);
+        
+        // Find the next messages that should be tool responses
+        for (let j = i + 1; j < this.conversationHistory.length; j++) {
+          const nextMessage = this.conversationHistory[j];
+          
+          if (nextMessage.role === 'tool') {
+            const toolCallIndex = toolCallIds.indexOf(nextMessage.tool_call_id);
+            if (toolCallIndex !== -1) {
+              toolCallIds.splice(toolCallIndex, 1); // Remove found tool call ID
+            }
+          } else if (nextMessage.role === 'assistant') {
+            // We've reached the next assistant message
+            break;
+          }
+        }
+        
+        // If there are unmatched tool calls, there's an issue
+        if (toolCallIds.length > 0) {
+          console.warn('Unmatched tool call IDs:', toolCallIds);
+          console.warn('Conversation history:', this.conversationHistory);
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   // Static method for backwards compatibility with existing code

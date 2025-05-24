@@ -582,6 +582,7 @@ function setupChat() {
       
       if (contextConfig.useEnhancedChat && enhancedChat) {
         // Use enhanced chat with function calling
+        console.log('Using enhanced chat mode');
         aiResp = await enhancedChat.getChatResponse(message, true);
         
         // Show tool usage indicator if tools were used
@@ -590,9 +591,13 @@ function setupChat() {
           const toolInfo = toolCalls.map(call => call.function).join(', ');
           console.log(`AI used tools: ${toolInfo}`);
           
+          // Remove any existing tool indicators
+          const existingIndicators = responseText.parentNode.querySelectorAll('.tool-indicator');
+          existingIndicators.forEach(indicator => indicator.remove());
+          
           // Add a subtle indicator in the UI
           const toolIndicator = document.createElement('div');
-          toolIndicator.className = 'text-xs text-blue-600 mb-2 flex items-center';
+          toolIndicator.className = 'text-xs text-blue-600 mb-2 flex items-center tool-indicator';
           toolIndicator.innerHTML = `<span class="icon icon-sm">🔍</span> Searched: ${toolInfo}`;
           responseText.parentNode.insertBefore(toolIndicator, responseText);
         }
