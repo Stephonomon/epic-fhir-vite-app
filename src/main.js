@@ -347,8 +347,8 @@ function setupUIListeners() {
   }
 
   // Add enhanced chat toggle
-  const enhancedChatToggle = document.createElement('div');
-  enhancedChatToggle.innerHTML = `
+  const enhancedChatToggleElement = document.createElement('div');
+  enhancedChatToggleElement.innerHTML = `
     <div class="flex items-center py-1 px-1 rounded hover:bg-gray-100 cursor-pointer" id="toggle-enhanced-chat">
       <span id="enhanced-chat-checkbox" class="text-blue-500 mr-2">☑️</span>
       <span class="flex items-center text-sm">
@@ -360,7 +360,7 @@ function setupUIListeners() {
   
   const settingsContainer = document.querySelector('#settings-panel .space-y-1');
   if (settingsContainer) {
-    settingsContainer.appendChild(enhancedChatToggle);
+    settingsContainer.appendChild(enhancedChatToggleElement);
   }
   
   // Data source toggle handlers - using simple emoji checkboxes
@@ -385,7 +385,7 @@ function setupUIListeners() {
   const medsToggle = document.getElementById('toggle-meds');
   const encountersToggle = document.getElementById('toggle-encounters');
   const conditionsToggle = document.getElementById('toggle-conditions');
-  const enhancedChatToggle = document.getElementById('toggle-enhanced-chat');
+  const enhancedChatToggleBtn = document.getElementById('toggle-enhanced-chat');
   
   if (patientToggle) {
     patientToggle.addEventListener('click', () => {
@@ -422,8 +422,8 @@ function setupUIListeners() {
     });
   }
 
-  if (enhancedChatToggle) {
-    enhancedChatToggle.addEventListener('click', () => {
+  if (enhancedChatToggleBtn) {
+    enhancedChatToggleBtn.addEventListener('click', () => {
       contextConfig.useEnhancedChat = !contextConfig.useEnhancedChat;
       updateCheckboxDisplay();
       
