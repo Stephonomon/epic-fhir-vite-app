@@ -46,6 +46,11 @@ const FETCH_CONFIGS = {
     fallbacks: []
   },
   
+  Binary: {
+    path: () => 'Binary?_count=20',
+    fallbacks: []
+  },
+  
   Conditions: {
     path: (client) => `Condition?patient=${encodeURIComponent(`Patient/${client.patient.id}`)}&_count=50`,
     fallbacks: [

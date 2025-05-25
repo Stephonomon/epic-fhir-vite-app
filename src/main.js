@@ -125,7 +125,7 @@ class EHRAssistantApp {
 
   buildAuthScope() {
     // Use wildcard scopes like the original code
-    return 'launch launch/patient patient/*.read observation/*.read medication/*.read encounter/*.read condition/*.read diagnosticreport/*.read documentreference/*.read allergyintolerance/*.read appointment/*.read immunization/*.read procedure/*.read questionnaire/*.read questionnaireresponse/*.read openid fhirUser ' +
+    return 'launch launch/patient patient/*.read observation/*.read medication/*.read encounter/*.read condition/*.read diagnosticreport/*.read documentreference/*.read allergyintolerance/*.read appointment/*.read immunization/*.read procedure/*.read questionnaire/*.read questionnaireresponse/*.read binary/*.read openid fhirUser ' +
            'context-user context-fhirUser context-enc_date context-user_ip context-syslogin ' +
            'context-user_timestamp context-workstation_id context-csn context-pat_id';
   }
@@ -141,7 +141,7 @@ class EHRAssistantApp {
       const coreResources = ['VitalSigns', 'MedicationRequests', 'Conditions', 'Encounters'];
       const additionalResources = [
         'AllergyIntolerances', 'Immunizations', 'DiagnosticReports', 
-        'Procedures', 'DocumentReferences', 'LabResults'
+        'Procedures', 'DocumentReferences', 'LabResults', 'Binary'
       ];
 
       // Load core resources in parallel

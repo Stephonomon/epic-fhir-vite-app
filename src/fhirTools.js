@@ -33,6 +33,16 @@ const FHIR_RESOURCES = {
     defaultCount: 25
   },
   
+  Binary: {
+    searchParams: {
+      contenttype: { param: 'contenttype', type: 'token' },
+      securityContext: { param: 'securityContext', type: 'reference' },
+      _lastUpdated: { param: '_lastUpdated', type: 'date' }
+    },
+    defaultSort: '-_lastUpdated',
+    defaultCount: 20
+  },
+  
   Condition: {
     searchParams: {
       clinical_status: { param: 'clinical-status', type: 'token' },
@@ -419,7 +429,8 @@ export class FHIRTools {
           'Diagnosticreport': 'DiagnosticReport',
           'Documentreference': 'DocumentReference',
           'Medicationrequest': 'MedicationRequest',
-          'Questionnaireresponse': 'QuestionnaireResponse'
+          'Questionnaireresponse': 'QuestionnaireResponse',
+          'Binary': 'Binary' // Add Binary mapping
         };
         
         const actualResourceType = resourceMap[resourceType] || resourceType;
@@ -1136,6 +1147,40 @@ export class FHIRTools {
       count: responses.length,
       total: data.total,
       responses: responses
+    };
+  }
+
+  formatBinaryResults(data, params) {
+    if (!data?.entry?.length) {
+      return { 
+        resourceType: 'Binary',
+        message: "No binary resources (clinical notes) found matching the criteria.",
+        count: 0
+      };
+    }
+
+    const binaries = data.entry.map(entry => {
+      const binary = entry.resource;
+      
+      return {
+        id: binary.id,
+        contentType: binary.contentType || "Unknown",
+        securityContext: binary.securityContext?.display || binary.securityContext?.reference || null,
+        size: binary.data ? Math.ceil(binary.data.length * 0.75) : null, // Approximate size from base64
+        lastUpdated: binary.meta?.lastUpdated || "Unknown",
+        // Note: The actual content is base64 encoded in binary.data
+        // For clinical notes, the contentType is typically 'text/plain' or 'application/pdf'
+        hasContent: !!binary.data,
+        note: "Use the Binary resource ID to retrieve the full content"
+      };
+    });
+
+    return {
+      resourceType: 'Binary',
+      count: binaries.length,
+      total: data.total,
+      binaries: binaries,
+      note: "Binary resources contain clinical notes and documents. The actual content needs to be decoded from base64."
     };
   }
 
