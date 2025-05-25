@@ -20,156 +20,7 @@ const FHIR_RESOURCES = {
       date: { param: 'date', type: 'date' },
       last_date: { param: 'last-date', type: 'date' },
       onset: { param: 'onset', type: 'date' }
-    // Get clinical note content from Binary resource
-  async getClinicalNoteContent(params) {
-    if (!params.binary_id) {
-      return { error: "Binary resource ID is required" };
-    }
-
-    try {
-      // Extract just the ID from URLs like "Binary/xyz123"
-      const binaryId = params.binary_id.includes('/') ? 
-        params.binary_id.split('/').pop() : 
-        params.binary_id;
-
-      const binaryData = await this.fetchResource(`Binary/${binaryId}`);
-      
-      // Decode base64 content
-      let decodedContent = null;
-      if (binaryData.data) {
-        try {
-          // Decode base64 to string
-          decodedContent = atob(binaryData.data);
-          
-          // If it's RTF and user wants HTML, note that conversion is needed
-          if (binaryData.contentType === 'text/rtf' && params.format === 'html') {
-            return {
-              contentType: binaryData.contentType,
-              content: decodedContent,
-              note: "Content is in RTF format. Client-side conversion to HTML may be needed.",
-              binaryId: binaryId
-            };
-          }
-        } catch (decodeError) {
-          return { 
-            error: "Failed to decode binary content", 
-            details: decodeError.message,
-            binaryId: binaryId 
-          };
-        }
-      }
-
-      return {
-        binaryId: binaryId,
-        contentType: binaryData.contentType || "Unknown",
-        content: decodedContent || "No content found",
-        rawData: params.format === 'raw' ? binaryData : undefined
-      };
-    } catch (error) {
-      return { 
-        error: `Failed to retrieve binary content: ${error.message}`,
-        binaryId: params.binary_id
-      };
-    }
-  }
-
-  // Search clinical notes and optionally retrieve content
-  async searchClinicalNotesWithContent(params) {
-    // First, search for DocumentReferences
-    const searchParams = {
-      category: params.category || 'clinical-note',
-      text_search: params.type,
-      date_start: params.date_start,
-      date_end: params.date_end,
-      count: params.count || 10
-    };
-
-    // Build DocumentReference search path
-    let path = 'DocumentReference?';
-    const queryParams = [];
-    
-    if (params.patient_id) {
-      queryParams.push(`patient=${params.patient_id}`);
-    } else {
-      queryParams.push(`patient=${this.client.patient.id}`);
-    }
-    
-    queryParams.push(`category=${searchParams.category}`);
-    
-    if (params.type) {
-      queryParams.push(`type:text=${encodeURIComponent(params.type)}`);
-    }
-    
-    if (params.encounter_id) {
-      queryParams.push(`encounter=${params.encounter_id}`);
-    }
-    
-    if (params.date_start) {
-      queryParams.push(`date=ge${params.date_start}`);
-    }
-    
-    if (params.date_end) {
-      queryParams.push(`date=le${params.date_end}`);
-    }
-    
-    queryParams.push(`_count=${searchParams.count}`);
-    queryParams.push(`_sort=-date`);
-    
-    path += queryParams.join('&');
-
-    try {
-      const documentData = await this.fetchResource(path);
-      const formattedDocs = this.formatDocumentReferenceResults(documentData, searchParams);
-      
-      // If content retrieval is requested
-      if (params.include_content && formattedDocs.documents.length > 0) {
-        // Retrieve content for each document
-        const docsWithContent = await Promise.all(
-          formattedDocs.documents.map(async (doc) => {
-            const contentResults = [];
-            
-            // Try to get content for each available Binary URL
-            for (const contentUrl of doc.contentUrls) {
-              if (contentUrl.binaryUrl) {
-                try {
-                  const content = await this.getClinicalNoteContent({
-                    binary_id: contentUrl.binaryUrl,
-                    format: contentUrl.contentType === 'text/html' ? 'html' : 'raw'
-                  });
-                  contentResults.push({
-                    ...contentUrl,
-                    ...content
-                  });
-                } catch (err) {
-                  contentResults.push({
-                    ...contentUrl,
-                    error: `Failed to retrieve content: ${err.message}`
-                  });
-                }
-              }
-            }
-            
-            return {
-              ...doc,
-              retrievedContent: contentResults
-            };
-          })
-        );
-        
-        return {
-          ...formattedDocs,
-          documents: docsWithContent,
-          contentIncluded: true
-        };
-      }
-      
-      return formattedDocs;
-    } catch (error) {
-      return { 
-        error: `Failed to search clinical notes: ${error.message}` 
-      };
-    }
-  },
+    },
     defaultSort: '-date',
     defaultCount: 25
   },
@@ -665,7 +516,7 @@ export class FHIRTools {
           'Documentreference': 'DocumentReference',
           'Medicationrequest': 'MedicationRequest',
           'Questionnaireresponse': 'QuestionnaireResponse',
-          'Binary': 'Binary' // Add Binary mapping
+          'Binary': 'Binary'
         };
         
         const actualResourceType = resourceMap[resourceType] || resourceType;
@@ -730,6 +581,157 @@ export class FHIRTools {
       dateRange: params.date_range || null,
       results
     };
+  }
+
+  // Get clinical note content from Binary resource
+  async getClinicalNoteContent(params) {
+    if (!params.binary_id) {
+      return { error: "Binary resource ID is required" };
+    }
+
+    try {
+      // Extract just the ID from URLs like "Binary/xyz123"
+      const binaryId = params.binary_id.includes('/') ? 
+        params.binary_id.split('/').pop() : 
+        params.binary_id;
+
+      const binaryData = await this.fetchResource(`Binary/${binaryId}`);
+      
+      // Decode base64 content
+      let decodedContent = null;
+      if (binaryData.data) {
+        try {
+          // Decode base64 to string
+          decodedContent = atob(binaryData.data);
+          
+          // If it's RTF and user wants HTML, note that conversion is needed
+          if (binaryData.contentType === 'text/rtf' && params.format === 'html') {
+            return {
+              contentType: binaryData.contentType,
+              content: decodedContent,
+              note: "Content is in RTF format. Client-side conversion to HTML may be needed.",
+              binaryId: binaryId
+            };
+          }
+        } catch (decodeError) {
+          return { 
+            error: "Failed to decode binary content", 
+            details: decodeError.message,
+            binaryId: binaryId 
+          };
+        }
+      }
+
+      return {
+        binaryId: binaryId,
+        contentType: binaryData.contentType || "Unknown",
+        content: decodedContent || "No content found",
+        rawData: params.format === 'raw' ? binaryData : undefined
+      };
+    } catch (error) {
+      return { 
+        error: `Failed to retrieve binary content: ${error.message}`,
+        binaryId: params.binary_id
+      };
+    }
+  }
+
+  // Search clinical notes and optionally retrieve content
+  async searchClinicalNotesWithContent(params) {
+    // First, search for DocumentReferences
+    const searchParams = {
+      category: params.category || 'clinical-note',
+      text_search: params.type,
+      date_start: params.date_start,
+      date_end: params.date_end,
+      count: params.count || 10
+    };
+
+    // Build DocumentReference search path
+    let path = 'DocumentReference?';
+    const queryParams = [];
+    
+    if (params.patient_id) {
+      queryParams.push(`patient=${params.patient_id}`);
+    } else {
+      queryParams.push(`patient=${this.client.patient.id}`);
+    }
+    
+    queryParams.push(`category=${searchParams.category}`);
+    
+    if (params.type) {
+      queryParams.push(`type:text=${encodeURIComponent(params.type)}`);
+    }
+    
+    if (params.encounter_id) {
+      queryParams.push(`encounter=${params.encounter_id}`);
+    }
+    
+    if (params.date_start) {
+      queryParams.push(`date=ge${params.date_start}`);
+    }
+    
+    if (params.date_end) {
+      queryParams.push(`date=le${params.date_end}`);
+    }
+    
+    queryParams.push(`_count=${searchParams.count}`);
+    queryParams.push(`_sort=-date`);
+    
+    path += queryParams.join('&');
+
+    try {
+      const documentData = await this.fetchResource(path);
+      const formattedDocs = this.formatDocumentReferenceResults(documentData, searchParams);
+      
+      // If content retrieval is requested
+      if (params.include_content && formattedDocs.documents.length > 0) {
+        // Retrieve content for each document
+        const docsWithContent = await Promise.all(
+          formattedDocs.documents.map(async (doc) => {
+            const contentResults = [];
+            
+            // Try to get content for each available Binary URL
+            for (const contentUrl of doc.contentUrls) {
+              if (contentUrl.binaryUrl) {
+                try {
+                  const content = await this.getClinicalNoteContent({
+                    binary_id: contentUrl.binaryUrl,
+                    format: contentUrl.contentType === 'text/html' ? 'html' : 'raw'
+                  });
+                  contentResults.push({
+                    ...contentUrl,
+                    ...content
+                  });
+                } catch (err) {
+                  contentResults.push({
+                    ...contentUrl,
+                    error: `Failed to retrieve content: ${err.message}`
+                  });
+                }
+              }
+            }
+            
+            return {
+              ...doc,
+              retrievedContent: contentResults
+            };
+          })
+        );
+        
+        return {
+          ...formattedDocs,
+          documents: docsWithContent,
+          contentIncluded: true
+        };
+      }
+      
+      return formattedDocs;
+    } catch (error) {
+      return { 
+        error: `Failed to search clinical notes: ${error.message}` 
+      };
+    }
   }
 
   // Format results based on resource type
