@@ -1,6 +1,13 @@
 // src/fhirTools.js
 // Refactored FHIR-specific tools for LLM function calling with modular architecture
 
+// Polyfill for atob if not available (for decoding base64)
+if (typeof atob === 'undefined') {
+  global.atob = function(str) {
+    return Buffer.from(str, 'base64').toString('binary');
+  };
+}
+
 // Define FHIR resource configurations
 const FHIR_RESOURCES = {
   AllergyIntolerance: {
@@ -13,7 +20,156 @@ const FHIR_RESOURCES = {
       date: { param: 'date', type: 'date' },
       last_date: { param: 'last-date', type: 'date' },
       onset: { param: 'onset', type: 'date' }
-    },
+    // Get clinical note content from Binary resource
+  async getClinicalNoteContent(params) {
+    if (!params.binary_id) {
+      return { error: "Binary resource ID is required" };
+    }
+
+    try {
+      // Extract just the ID from URLs like "Binary/xyz123"
+      const binaryId = params.binary_id.includes('/') ? 
+        params.binary_id.split('/').pop() : 
+        params.binary_id;
+
+      const binaryData = await this.fetchResource(`Binary/${binaryId}`);
+      
+      // Decode base64 content
+      let decodedContent = null;
+      if (binaryData.data) {
+        try {
+          // Decode base64 to string
+          decodedContent = atob(binaryData.data);
+          
+          // If it's RTF and user wants HTML, note that conversion is needed
+          if (binaryData.contentType === 'text/rtf' && params.format === 'html') {
+            return {
+              contentType: binaryData.contentType,
+              content: decodedContent,
+              note: "Content is in RTF format. Client-side conversion to HTML may be needed.",
+              binaryId: binaryId
+            };
+          }
+        } catch (decodeError) {
+          return { 
+            error: "Failed to decode binary content", 
+            details: decodeError.message,
+            binaryId: binaryId 
+          };
+        }
+      }
+
+      return {
+        binaryId: binaryId,
+        contentType: binaryData.contentType || "Unknown",
+        content: decodedContent || "No content found",
+        rawData: params.format === 'raw' ? binaryData : undefined
+      };
+    } catch (error) {
+      return { 
+        error: `Failed to retrieve binary content: ${error.message}`,
+        binaryId: params.binary_id
+      };
+    }
+  }
+
+  // Search clinical notes and optionally retrieve content
+  async searchClinicalNotesWithContent(params) {
+    // First, search for DocumentReferences
+    const searchParams = {
+      category: params.category || 'clinical-note',
+      text_search: params.type,
+      date_start: params.date_start,
+      date_end: params.date_end,
+      count: params.count || 10
+    };
+
+    // Build DocumentReference search path
+    let path = 'DocumentReference?';
+    const queryParams = [];
+    
+    if (params.patient_id) {
+      queryParams.push(`patient=${params.patient_id}`);
+    } else {
+      queryParams.push(`patient=${this.client.patient.id}`);
+    }
+    
+    queryParams.push(`category=${searchParams.category}`);
+    
+    if (params.type) {
+      queryParams.push(`type:text=${encodeURIComponent(params.type)}`);
+    }
+    
+    if (params.encounter_id) {
+      queryParams.push(`encounter=${params.encounter_id}`);
+    }
+    
+    if (params.date_start) {
+      queryParams.push(`date=ge${params.date_start}`);
+    }
+    
+    if (params.date_end) {
+      queryParams.push(`date=le${params.date_end}`);
+    }
+    
+    queryParams.push(`_count=${searchParams.count}`);
+    queryParams.push(`_sort=-date`);
+    
+    path += queryParams.join('&');
+
+    try {
+      const documentData = await this.fetchResource(path);
+      const formattedDocs = this.formatDocumentReferenceResults(documentData, searchParams);
+      
+      // If content retrieval is requested
+      if (params.include_content && formattedDocs.documents.length > 0) {
+        // Retrieve content for each document
+        const docsWithContent = await Promise.all(
+          formattedDocs.documents.map(async (doc) => {
+            const contentResults = [];
+            
+            // Try to get content for each available Binary URL
+            for (const contentUrl of doc.contentUrls) {
+              if (contentUrl.binaryUrl) {
+                try {
+                  const content = await this.getClinicalNoteContent({
+                    binary_id: contentUrl.binaryUrl,
+                    format: contentUrl.contentType === 'text/html' ? 'html' : 'raw'
+                  });
+                  contentResults.push({
+                    ...contentUrl,
+                    ...content
+                  });
+                } catch (err) {
+                  contentResults.push({
+                    ...contentUrl,
+                    error: `Failed to retrieve content: ${err.message}`
+                  });
+                }
+              }
+            }
+            
+            return {
+              ...doc,
+              retrievedContent: contentResults
+            };
+          })
+        );
+        
+        return {
+          ...formattedDocs,
+          documents: docsWithContent,
+          contentIncluded: true
+        };
+      }
+      
+      return formattedDocs;
+    } catch (error) {
+      return { 
+        error: `Failed to search clinical notes: ${error.message}` 
+      };
+    }
+  },
     defaultSort: '-date',
     defaultCount: 25
   },
@@ -78,12 +234,15 @@ const FHIR_RESOURCES = {
   DocumentReference: {
     searchParams: {
       status: { param: 'status', type: 'token' },
+      docstatus: { param: 'docstatus', type: 'token' },
       type: { param: 'type', type: 'token' },
       category: { param: 'category', type: 'token' },
       subject: { param: 'subject', type: 'reference' },
+      patient: { param: 'patient', type: 'reference' },
       encounter: { param: 'encounter', type: 'reference' },
       author: { param: 'author', type: 'reference' },
       custodian: { param: 'custodian', type: 'reference' },
+      authenticator: { param: 'authenticator', type: 'reference' },
       date: { param: 'date', type: 'date' },
       period: { param: 'period', type: 'date' },
       created: { param: 'created', type: 'date' }
@@ -345,6 +504,78 @@ export class FHIRTools {
       }
     });
 
+    tools.push({
+      type: "function",
+      function: {
+        name: "get_clinical_note_content",
+        description: "Retrieve the actual content of a clinical note using its Binary resource ID",
+        parameters: {
+          type: "object",
+          properties: {
+            binary_id: {
+              type: "string",
+              description: "The Binary resource ID from DocumentReference contentUrls"
+            },
+            format: {
+              type: "string",
+              description: "Desired format for the content",
+              enum: ["html", "rtf", "raw"],
+              default: "html"
+            }
+          },
+          required: ["binary_id"]
+        }
+      }
+    });
+
+    tools.push({
+      type: "function",
+      function: {
+        name: "search_clinical_notes_with_content",
+        description: "Search for clinical notes and optionally retrieve their content",
+        parameters: {
+          type: "object",
+          properties: {
+            patient_id: {
+              type: "string",
+              description: "Patient FHIR ID"
+            },
+            category: {
+              type: "string",
+              description: "Note category (should be 'clinical-note')",
+              default: "clinical-note"
+            },
+            type: {
+              type: "string",
+              description: "Note type (e.g., 'Progress Note', 'Discharge Documentation', 'Consultation')"
+            },
+            date_start: {
+              type: "string",
+              description: "Start date for note search (YYYY-MM-DD)"
+            },
+            date_end: {
+              type: "string",
+              description: "End date for note search (YYYY-MM-DD)"
+            },
+            encounter_id: {
+              type: "string",
+              description: "Encounter FHIR ID"
+            },
+            count: {
+              type: "integer",
+              description: "Maximum number of notes to return",
+              default: 10
+            },
+            include_content: {
+              type: "boolean",
+              description: "Whether to retrieve the actual note content",
+              default: false
+            }
+          }
+        }
+      }
+    });
+
     return tools;
   }
 
@@ -414,6 +645,10 @@ export class FHIRTools {
         return await this.getPatientSummary();
       } else if (toolName === 'search_all_resources') {
         return await this.searchAllResources(parameters);
+      } else if (toolName === 'get_clinical_note_content') {
+        return await this.getClinicalNoteContent(parameters);
+      } else if (toolName === 'search_clinical_notes_with_content') {
+        return await this.searchClinicalNotesWithContent(parameters);
       }
 
       // Handle resource-specific searches
@@ -926,6 +1161,13 @@ export class FHIRTools {
     const documents = data.entry.map(entry => {
       const doc = entry.resource;
       
+      // Extract Binary URLs for content retrieval
+      const contentUrls = doc.content?.map(cont => ({
+        contentType: cont.attachment?.contentType || "Unknown",
+        binaryUrl: cont.attachment?.url || null,
+        format: cont.format?.display || cont.format?.code || null
+      })) || [];
+      
       return {
         id: doc.id,
         status: doc.status || "Unknown",
@@ -942,15 +1184,12 @@ export class FHIRTools {
         authenticator: doc.authenticator?.display || doc.authenticator?.reference || null,
         custodian: doc.custodian?.display || doc.custodian?.reference || null,
         description: doc.description || null,
-        content: doc.content?.map(cont => ({
-          attachment: {
-            contentType: cont.attachment?.contentType || "Unknown",
-            title: cont.attachment?.title || null,
-            size: cont.attachment?.size || null,
-            creation: cont.attachment?.creation?.split('T')[0] || null
-          },
-          format: cont.format?.display || cont.format?.code || null
-        })) || [],
+        // Include content URLs for Binary resource retrieval
+        contentUrls: contentUrls,
+        // Add note about how to retrieve content
+        contentRetrievalNote: contentUrls.length > 0 ? 
+          "To retrieve the actual note content, use the Binary resource IDs from contentUrls" : 
+          "No content URLs available",
         context: {
           encounter: doc.context?.encounter?.map(enc => 
             enc.display || enc.reference || "Unknown"
@@ -970,7 +1209,8 @@ export class FHIRTools {
       resourceType: 'DocumentReference',
       count: documents.length,
       total: data.total,
-      documents: documents
+      documents: documents,
+      note: "DocumentReference contains metadata about clinical notes. To retrieve the actual note content, use the Binary resource IDs found in each document's contentUrls array."
     };
   }
 
