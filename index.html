@@ -6,8 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Epic FHIR EHR Assistant</title>
     <link rel="stylesheet" href="/src/style.css" />
-    <!-- Lucide Icons -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/umd/lucide.js"></script>
 </head>
 
 <body>
@@ -16,12 +14,12 @@
         <header class="app-header">
             <div class="header-left">
                 <h1 class="app-title">
-                    <i data-lucide="bot"></i>
+                    <span class="icon">💬</span>
                     EHR Assistant
                 </h1>
             </div>
             
-            <!-- Patient Info Section -->
+            <!-- Patient Info Section (like user info) -->
             <div class="patient-header-info">
                 <div id="patient-summary-header" class="patient-summary-compact">
                     <div class="patient-name">Loading Patient...</div>
@@ -34,26 +32,32 @@
             </div>
 
             <div class="header-right">
+                <div class="context-indicators">
+                    <span id="patient-indicator" class="context-indicator enabled" title="Patient Demographics">👤</span>
+                    <span id="vitals-indicator" class="context-indicator enabled" title="Vital Signs">📋</span>
+                    <span id="meds-indicator" class="context-indicator enabled" title="Medications">💊</span>
+                    <span id="encounters-indicator" class="context-indicator enabled" title="Encounters">🏥</span>
+                    <span id="conditions-indicator" class="context-indicator enabled" title="Conditions">🩺</span>
+                    <span id="enhanced-indicator" class="context-indicator enabled" title="Enhanced AI Mode">🤖</span>
+                </div>
                 <button id="data-inspector-toggle" class="inspector-toggle" title="Show data inspector">
-                    <i data-lucide="search"></i>
+                    <span class="icon">🔍</span>
                 </button>
-                <button id="settings-toggle" class="settings-btn" title="Settings">
-                    <i data-lucide="settings"></i>
-                </button>
+                <button id="settings-toggle" class="settings-btn" title="Settings">⚙️</button>
             </div>
         </header>
 
         <!-- Settings Panel (Dropdown) -->
-        <div id="settings-panel" class="settings-dropdown">
+        <div id="settings-panel" class="settings-dropdown" style="display: none;">
             <div class="settings-content">
-                <h3><i data-lucide="database"></i> Data Sources</h3>
+                <h3>Data Sources</h3>
                 <p class="settings-description">Control what data the AI assistant can access</p>
                 
                 <div class="settings-grid">
                     <div class="setting-item">
                         <input type="checkbox" id="toggle-patient" checked>
                         <label for="toggle-patient">
-                            <i data-lucide="user"></i>
+                            <span class="icon">👤</span>
                             Patient Demographics
                         </label>
                     </div>
@@ -61,7 +65,7 @@
                     <div class="setting-item">
                         <input type="checkbox" id="toggle-vitals" checked>
                         <label for="toggle-vitals">
-                            <i data-lucide="activity"></i>
+                            <span class="icon">📋</span>
                             Vital Signs & Labs
                         </label>
                     </div>
@@ -69,7 +73,7 @@
                     <div class="setting-item">
                         <input type="checkbox" id="toggle-meds" checked>
                         <label for="toggle-meds">
-                            <i data-lucide="pill"></i>
+                            <span class="icon">💊</span>
                             Medications
                         </label>
                     </div>
@@ -77,7 +81,7 @@
                     <div class="setting-item">
                         <input type="checkbox" id="toggle-encounters" checked>
                         <label for="toggle-encounters">
-                            <i data-lucide="building-2"></i>
+                            <span class="icon">🏥</span>
                             Encounters & Visits
                         </label>
                     </div>
@@ -85,7 +89,7 @@
                     <div class="setting-item">
                         <input type="checkbox" id="toggle-conditions" checked>
                         <label for="toggle-conditions">
-                            <i data-lucide="stethoscope"></i>
+                            <span class="icon">🩺</span>
                             Conditions & Problems
                         </label>
                     </div>
@@ -93,7 +97,7 @@
                     <div class="setting-item">
                         <input type="checkbox" id="toggle-enhanced" checked>
                         <label for="toggle-enhanced">
-                            <i data-lucide="brain"></i>
+                            <span class="icon">🤖</span>
                             Enhanced AI Mode
                         </label>
                         <small>Enable dynamic FHIR querying with function calling</small>
@@ -118,7 +122,7 @@
                     <div id="chat-history" class="chat-history">
                         <div class="welcome-message">
                             <div class="welcome-header">
-                                <i data-lucide="bot" size="32"></i>
+                                <span class="icon">🤖</span>
                                 <h3>Welcome to EHR Assistant</h3>
                             </div>
                             <p>I can help you analyze patient data, answer questions about medications, vitals, conditions, and more. Ask me anything about this patient!</p>
@@ -145,27 +149,22 @@
                                 rows="1"
                             ></textarea>
                             <button id="chat-submit" class="chat-submit" title="Send message">
-                                <i data-lucide="search"></i>
+                                🔍
                             </button>
                         </div>
                         
                         <div class="input-footer">
                             <div class="input-actions">
                                 <button id="clear-chat" class="action-btn" title="Clear conversation">
-                                    <i data-lucide="trash-2" size="16"></i>
-                                    Clear
+                                    <span class="icon">🗑️</span> Clear
                                 </button>
                                 <button id="export-chat" class="action-btn" title="Export conversation">
-                                    <i data-lucide="download" size="16"></i>
-                                    Export
+                                    <span class="icon">📥</span> Export
                                 </button>
                             </div>
                             
                             <div class="status-info">
-                                <span class="connection-status">
-                                    <i data-lucide="check-circle" size="16"></i>
-                                    SMART on FHIR Connected
-                                </span>
+                                <span class="connection-status">🟢 SMART on FHIR Connected</span>
                             </div>
                         </div>
                     </div>
@@ -176,12 +175,10 @@
             <aside id="data-inspector" class="data-inspector" style="display: none;">
                 <div class="inspector-header">
                     <h3>
-                        <i data-lucide="search"></i>
+                        <span class="icon">🔍</span>
                         Data Inspector
                     </h3>
-                    <button id="inspector-close" class="close-btn">
-                        <i data-lucide="x"></i>
-                    </button>
+                    <button id="inspector-close" class="close-btn">✕</button>
                 </div>
                 
                 <div class="inspector-content">
@@ -189,43 +186,25 @@
                         <p>This panel shows the raw FHIR data that the AI searched and used to generate responses.</p>
                     </div>
                     
-                    <!-- Collapsible Recent Searches Section -->
-                    <div class="collapsible-section">
-                        <div class="section-header" onclick="toggleSection('recent-searches')">
-                            <h4>
-                                <i data-lucide="clock"></i>
-                                Recent Searches
-                            </h4>
-                            <i data-lucide="chevron-down" class="collapse-icon"></i>
-                        </div>
-                        <div id="recent-searches-content" class="section-content">
-                            <div id="search-history" class="search-history">
-                                <div class="no-searches">No searches yet. Ask the AI a question to see FHIR queries here.</div>
-                            </div>
+                    <!-- Search History -->
+                    <div class="search-history-section">
+                        <h4>Recent Searches</h4>
+                        <div id="search-history" class="search-history">
+                            <div class="no-searches">No searches yet. Ask the AI a question to see FHIR queries here.</div>
                         </div>
                     </div>
                     
-                    <!-- Collapsible Raw Data Section -->
-                    <div class="collapsible-section">
-                        <div class="section-header" onclick="toggleSection('raw-data')">
-                            <h4>
-                                <i data-lucide="file-json"></i>
-                                Raw FHIR Data
-                            </h4>
-                            <i data-lucide="chevron-down" class="collapse-icon"></i>
+                    <!-- Raw Data Viewer -->
+                    <div class="raw-data-section">
+                        <h4>Raw FHIR Data</h4>
+                        <div class="data-viewer-controls">
+                            <select id="data-viewer-select">
+                                <option value="">Select a search result to view</option>
+                            </select>
+                            <button id="copy-raw-data" class="copy-btn" title="Copy raw data">📋</button>
                         </div>
-                        <div id="raw-data-content" class="section-content">
-                            <div class="data-viewer-controls">
-                                <select id="data-viewer-select">
-                                    <option value="">Select a search result to view</option>
-                                </select>
-                                <button id="copy-raw-data" class="copy-btn" title="Copy raw data">
-                                    <i data-lucide="copy" size="16"></i>
-                                </button>
-                            </div>
-                            <div id="raw-data-viewer" class="raw-data-viewer">
-                                <div class="no-data">Select a search result above to view raw FHIR data</div>
-                            </div>
+                        <div id="raw-data-viewer" class="raw-data-viewer">
+                            <div class="no-data">Select a search result above to view raw FHIR data</div>
                         </div>
                     </div>
                 </div>
