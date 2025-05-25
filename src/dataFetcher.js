@@ -11,38 +11,38 @@ const FETCH_CONFIGS = {
   },
   
   VitalSigns: {
-    path: () => 'Observation?category=vital-signs&_sort=-date&_count=50',
+    path: () => 'Observation?category=vital-signs&_sort=-date&_count=20',
     fallbacks: [
-      () => 'Observation?category=vital-signs&_count=50',
-      () => 'Observation?_count=50'
+      () => 'Observation?category=vital-signs&_count=20',
+      () => 'Observation?_count=20'
     ]
   },
   
   LabResults: {
-    path: () => 'Observation?category=laboratory&_sort=-date&_count=50',
+    path: () => 'Observation?category=laboratory&_sort=-date&_count=20',
     fallbacks: [
-      () => 'Observation?category=laboratory&_count=50',
-      () => 'Observation?category=LAB&_count=50'
+      () => 'Observation?category=laboratory&_count=20',
+      () => 'Observation?category=LAB&_count=20'
     ]
   },
   
   SocialHistory: {
-    path: () => 'Observation?category=social-history&_sort=-date&_count=50',
+    path: () => 'Observation?category=social-history&_sort=-date&_count=20',
     fallbacks: [
-      () => 'Observation?category=social-history&_count=50'
+      () => 'Observation?category=social-history&_count=20'
     ]
   },
   
   MedicationRequests: {
-    path: () => 'MedicationRequest?_sort=-authoredon&_count=50',
+    path: () => 'MedicationRequest?_sort=-authoredon&_count=20',
     fallbacks: [
-      () => 'MedicationRequest?_sort=-date&_count=50',
-      () => 'MedicationRequest?_count=50'
+      () => 'MedicationRequest?_sort=-date&_count=20',
+      () => 'MedicationRequest?_count=20'
     ]
   },
   
   Medications: {
-    path: () => 'Medication?_count=50',
+    path: () => 'Medication?_count=20',
     fallbacks: []
   },
   
@@ -52,76 +52,76 @@ const FETCH_CONFIGS = {
   },
   
   Conditions: {
-    path: (client) => `Condition?patient=${encodeURIComponent(`Patient/${client.patient.id}`)}&_count=50`,
+    path: (client) => `Condition?patient=${encodeURIComponent(`Patient/${client.patient.id}`)}&_count=20`,
     fallbacks: [
-      (client) => `Condition?patient=${encodeURIComponent(`Patient/${client.patient.id}`)}&category=problem-list-item&_count=50`,
-      (client) => `Condition?patient=${encodeURIComponent(`Patient/${client.patient.id}`)}&clinical-status=active&_count=50`,
-      () => 'Condition?_count=50'
+      (client) => `Condition?patient=${encodeURIComponent(`Patient/${client.patient.id}`)}&category=problem-list-item&_count=20`,
+      (client) => `Condition?patient=${encodeURIComponent(`Patient/${client.patient.id}`)}&clinical-status=active&_count=20`,
+      () => 'Condition?_count=20'
     ]
   },
   
   Encounters: {
-    path: () => 'Encounter?_sort=-date&_count=50',
+    path: () => 'Encounter?_sort=-date&_count=20',
     fallbacks: [
-      () => 'Encounter?_sort=-period&_count=50',
-      () => 'Encounter?_count=50'
+      () => 'Encounter?_sort=-period&_count=20',
+      () => 'Encounter?_count=20'
     ]
   },
   
   DiagnosticReports: {
-    path: () => 'DiagnosticReport?_sort=-date&_count=50',
+    path: () => 'DiagnosticReport?_sort=-date&_count=20',
     fallbacks: [
-      () => 'DiagnosticReport?_sort=-effective-date&_count=50',
-      () => 'DiagnosticReport?_count=50'
+      () => 'DiagnosticReport?_sort=-effective-date&_count=20',
+      () => 'DiagnosticReport?_count=20'
     ]
   },
   
   AllergyIntolerances: {
-    path: () => 'AllergyIntolerance?_count=50',
+    path: () => 'AllergyIntolerance?_count=20',
     fallbacks: []
   },
   
   Immunizations: {
-    path: () => 'Immunization?_sort=-date&_count=50',
+    path: () => 'Immunization?_sort=-date&_count=20',
     fallbacks: [
-      () => 'Immunization?_sort=-occurrence&_count=50',
-      () => 'Immunization?_count=50'
+      () => 'Immunization?_sort=-occurrence&_count=20',
+      () => 'Immunization?_count=20'
     ]
   },
   
   Procedures: {
-    path: () => 'Procedure?_sort=-date&_count=50',
+    path: () => 'Procedure?_sort=-date&_count=20',
     fallbacks: [
-      () => 'Procedure?_sort=-performed&_count=50',
-      () => 'Procedure?_count=50'
+      () => 'Procedure?_sort=-performed&_count=20',
+      () => 'Procedure?_count=20'
     ]
   },
   
   DocumentReferences: {
-    path: () => 'DocumentReference?_sort=-date&_count=50',
+    path: () => 'DocumentReference?_sort=-date&_count=20',
     fallbacks: [
-      () => 'DocumentReference?category=clinical-note&_count=50',
-      () => 'DocumentReference?_count=50'
+      () => 'DocumentReference?category=clinical-note&_count=20',
+      () => 'DocumentReference?_count=20'
     ]
   },
   
   Appointments: {
-    path: () => 'Appointment?_sort=-date&_count=50',
+    path: () => 'Appointment?_sort=-date&_count=20',
     fallbacks: [
-      () => 'Appointment?status=booked,arrived,checked-in&_count=50',
-      () => 'Appointment?_count=50'
+      () => 'Appointment?status=booked,arrived,checked-in&_count=20',
+      () => 'Appointment?_count=20'
     ]
   },
   
   Questionnaires: {
-    path: () => 'Questionnaire?_count=50',
+    path: () => 'Questionnaire?_count=5',
     fallbacks: []
   },
   
   QuestionnaireResponses: {
-    path: () => 'QuestionnaireResponse?_sort=-authored&_count=50',
+    path: () => 'QuestionnaireResponse?_sort=-authored&_count=20',
     fallbacks: [
-      () => 'QuestionnaireResponse?_count=50'
+      () => 'QuestionnaireResponse?_count=20'
     ]
   }
 };
@@ -260,15 +260,16 @@ export class DataFetcherService {
   }
 
   // Batch fetch multiple resource types
-  async batchFetch(resourceTypes, options = {}) {
-    const promises = resourceTypes.map(type => 
-      this.fetchData(type, options)
-        .then(data => ({ type, data, success: true }))
-        .catch(error => ({ type, error: error.message, success: false }))
-    );
+  //commented out by snp
+  // async batchFetch(resourceTypes, options = {}) {
+  //   const promises = resourceTypes.map(type => 
+  //     this.fetchData(type, options)
+  //       .then(data => ({ type, data, success: true }))
+  //       .catch(error => ({ type, error: error.message, success: false }))
+  //   );
 
-    return Promise.all(promises);
-  }
+  //   return Promise.all(promises);
+  // }
 
   // Clear cache
   clearCache(resourceType = null) {

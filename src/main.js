@@ -130,35 +130,30 @@ class EHRAssistantApp {
            'context-user_timestamp context-workstation_id context-csn context-pat_id';
   }
 
-  async loadInitialData() {
-    this.uiManager.showLoading(true);
-    
-    try {
-      // Load patient data first
-      await this.loadPatientData();
+// in EHRAssistantApp.loadInitialData (src/main.js)
+async loadInitialData() {
+  this.uiManager.showLoading(true);
+  try {
+    // 1) Always fetch demographics
+    await this.loadPatientData();
 
-      // Define resource loading groups
-      const coreResources = ['VitalSigns', 'MedicationRequests', 'Conditions', 'Encounters'];
-      const additionalResources = [
-        'AllergyIntolerances', 'Immunizations', 'DiagnosticReports', 
-        'Procedures', 'DocumentReferences', 'LabResults', 'Binary'
-      ];
+    // 2) Only fetch the single most-recent encounter
+    const encounterBundle = await this.dataFetcher.fetchData('Encounters', {
+      count: 1,
+      useCache: true
+    });
+    this.processBatchResults([
+      { type: 'Encounters', data: encounterBundle, success: true }
+    ]);
 
-      // Load core resources in parallel
-      const coreResults = await this.dataFetcher.batchFetch(coreResources, { useCache: true });
-      this.processBatchResults(coreResults);
-
-      // Load additional resources in background
-      this.dataFetcher.batchFetch(additionalResources, { useCache: true })
-        .then(results => this.processBatchResults(results))
-        .catch(err => console.warn('Failed to load additional resources:', err));
-
-    } catch (error) {
-      this.uiManager.displayError(`Failed to load initial data: ${error.message}`, error);
-    } finally {
-      this.uiManager.showLoading(false);
-    }
+    // 3) Defer everything else until the user navigates or asks
+  } catch (err) {
+    this.uiManager.displayError(`Failed to load initial data: ${err.message}`, err);
+  } finally {
+    this.uiManager.showLoading(false);
   }
+}
+
 
   async loadPatientData() {
     try {

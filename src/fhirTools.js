@@ -22,7 +22,7 @@ const FHIR_RESOURCES = {
       onset: { param: 'onset', type: 'date' }
     },
     defaultSort: '-date',
-    defaultCount: 25
+    defaultCount: 10
   },
   
   Appointment: {
@@ -37,7 +37,7 @@ const FHIR_RESOURCES = {
       created: { param: 'created', type: 'date' }
     },
     defaultSort: '-date',
-    defaultCount: 25
+    defaultCount: 10
   },
   
   Binary: {
@@ -47,7 +47,7 @@ const FHIR_RESOURCES = {
       _lastUpdated: { param: '_lastUpdated', type: 'date' }
     },
     defaultSort: '-_lastUpdated',
-    defaultCount: 20
+    defaultCount: 10
   },
   
   Condition: {
@@ -63,7 +63,7 @@ const FHIR_RESOURCES = {
       abatement_date: { param: 'abatement-date', type: 'date' }
     },
     defaultSort: '-recorded-date',
-    defaultCount: 25
+    defaultCount: 10
   },
   
   DiagnosticReport: {
@@ -79,7 +79,7 @@ const FHIR_RESOURCES = {
       specimen: { param: 'specimen', type: 'reference' }
     },
     defaultSort: '-date',
-    defaultCount: 20
+    defaultCount: 10
   },
   
   DocumentReference: {
@@ -99,7 +99,7 @@ const FHIR_RESOURCES = {
       created: { param: 'created', type: 'date' }
     },
     defaultSort: '-date',
-    defaultCount: 20
+    defaultCount: 10
   },
   
   Encounter: {
@@ -116,7 +116,7 @@ const FHIR_RESOURCES = {
       period: { param: 'period', type: 'date' }
     },
     defaultSort: '-date',
-    defaultCount: 25
+    defaultCount: 10
   },
   
   Immunization: {
@@ -130,7 +130,7 @@ const FHIR_RESOURCES = {
       lot_number: { param: 'lot-number', type: 'string' }
     },
     defaultSort: '-date',
-    defaultCount: 25
+    defaultCount: 10
   },
   
   Medication: {
@@ -145,7 +145,7 @@ const FHIR_RESOURCES = {
       expiration_date: { param: 'expiration-date', type: 'date' }
     },
     defaultSort: '-_lastUpdated',
-    defaultCount: 25
+    defaultCount: 10
   },
   
   MedicationRequest: {
@@ -162,7 +162,7 @@ const FHIR_RESOURCES = {
       effective_date: { param: 'effective-date', type: 'date' }
     },
     defaultSort: '-authoredon',
-    defaultCount: 25
+    defaultCount: 10
   },
   
   Observation: {
@@ -179,7 +179,7 @@ const FHIR_RESOURCES = {
       issued: { param: 'issued', type: 'date' }
     },
     defaultSort: '-date',
-    defaultCount: 25
+    defaultCount: 10
   },
   
   Procedure: {
@@ -196,7 +196,7 @@ const FHIR_RESOURCES = {
       performed: { param: 'performed', type: 'date' }
     },
     defaultSort: '-date',
-    defaultCount: 25
+    defaultCount: 10
   },
   
   Questionnaire: {
@@ -210,7 +210,7 @@ const FHIR_RESOURCES = {
       date: { param: 'date', type: 'date' }
     },
     defaultSort: '-date',
-    defaultCount: 20
+    defaultCount: 10
   },
   
   QuestionnaireResponse: {
@@ -224,7 +224,7 @@ const FHIR_RESOURCES = {
       authored: { param: 'authored', type: 'date' }
     },
     defaultSort: '-authored',
-    defaultCount: 20
+    defaultCount: 10
   }
 };
 
