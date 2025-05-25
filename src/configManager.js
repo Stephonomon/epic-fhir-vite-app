@@ -98,6 +98,12 @@ export class ConfigManager {
 
   // Storage management
   saveToStorage() {
+    // Skip localStorage in certain environments
+    if (typeof localStorage === 'undefined') {
+      console.warn('localStorage not available');
+      return;
+    }
+    
     try {
       localStorage.setItem('ehrAssistantConfig', JSON.stringify(this.config));
     } catch (error) {
@@ -106,6 +112,12 @@ export class ConfigManager {
   }
 
   loadFromStorage() {
+    // Skip localStorage in certain environments
+    if (typeof localStorage === 'undefined') {
+      console.warn('localStorage not available');
+      return;
+    }
+    
     try {
       const stored = localStorage.getItem('ehrAssistantConfig');
       if (stored) {

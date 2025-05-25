@@ -9,6 +9,7 @@ import {
   summarizeEncounters,
   summarizeConditions
 } from './summarizers.js';
+import { extractPatientInfo } from './fhirUtils.js';
 
 export class ChatManager {
   constructor(uiManager, openAiKey) {

@@ -31,30 +31,46 @@ class EHRAssistantApp {
   }
 
   async init() {
-    // Initialize managers
-    this.configManager = new ConfigManager();
-    this.uiManager = new UIManager(this.configManager);
-    this.chatManager = new ChatManager(this.uiManager, APP_CONFIG.OPENAI_API_KEY);
+    try {
+      console.log('Initializing EHR Assistant App...');
+      
+      // Initialize managers
+      this.configManager = new ConfigManager();
+      console.log('ConfigManager initialized');
+      
+      this.uiManager = new UIManager(this.configManager);
+      console.log('UIManager initialized');
+      
+      this.chatManager = new ChatManager(this.uiManager, APP_CONFIG.OPENAI_API_KEY);
+      console.log('ChatManager initialized');
 
-    // Setup UI event listeners
-    this.setupEventListeners();
+      // Setup UI event listeners
+      this.setupEventListeners();
+      console.log('Event listeners setup');
 
-    // Initialize welcome message
-    this.uiManager.displayWelcomeMessage();
+      // Initialize welcome message
+      this.uiManager.displayWelcomeMessage();
+      console.log('Welcome message displayed');
 
-    // Check for SMART launch parameters
-    const params = new URLSearchParams(window.location.search);
-    const launchToken = params.get('launch');
-    const iss = params.get('iss');
+      // Check for SMART launch parameters
+      const params = new URLSearchParams(window.location.search);
+      const launchToken = params.get('launch');
+      const iss = params.get('iss');
+      
+      console.log('Launch params:', { launchToken: !!launchToken, iss: !!iss, hasSmartKey: !!sessionStorage.getItem('SMART_KEY') });
 
-    if (sessionStorage.getItem('SMART_KEY')) {
-      await this.initializeWithSMARTClient();
-    } else if (launchToken && iss) {
-      await this.authorizeWithEHR(launchToken, iss);
-    } else {
-      this.uiManager.showLoading(false);
-      this.uiManager.displayError("This app requires an EHR launch or manual configuration.");
-      this.chatManager.setupChatInterface();
+      if (sessionStorage.getItem('SMART_KEY')) {
+        await this.initializeWithSMARTClient();
+      } else if (launchToken && iss) {
+        await this.authorizeWithEHR(launchToken, iss);
+      } else {
+        this.uiManager.showLoading(false);
+        this.uiManager.displayError("This app requires an EHR launch or manual configuration.");
+        this.chatManager.setupChatInterface();
+      }
+    } catch (error) {
+      console.error('Failed to initialize app:', error);
+      throw error;
     }
   }
 
@@ -108,51 +124,10 @@ class EHRAssistantApp {
   }
 
   buildAuthScope() {
-    return [
-      'launch',
-      'launch/patient',
-      'patient/*.read',
-      'openid',
-      'fhirUser',
-      // Add all the resource scopes based on the images
-      'AllergyIntolerance.read',
-      'AllergyIntolerance.search',
-      'Appointment.read',
-      'Appointment.search',
-      'Condition.read',
-      'Condition.search',
-      'DiagnosticReport.read',
-      'DiagnosticReport.search',
-      'DocumentReference.read',
-      'DocumentReference.search',
-      'Encounter.read',
-      'Encounter.search',
-      'Immunization.read',
-      'Immunization.search',
-      'Medication.read',
-      'Medication.search',
-      'MedicationRequest.read',
-      'MedicationRequest.search',
-      'Observation.read',
-      'Observation.search',
-      'Patient.read',
-      'Patient.search',
-      'Procedure.read',
-      'Procedure.search',
-      'Questionnaire.read',
-      'Questionnaire.search',
-      'QuestionnaireResponse.read',
-      // Context scopes
-      'context-user',
-      'context-fhirUser',
-      'context-enc_date',
-      'context-user_ip',
-      'context-syslogin',
-      'context-user_timestamp',
-      'context-workstation_id',
-      'context-csn',
-      'context-pat_id'
-    ].join(' ');
+    // Use wildcard scopes like the original code
+    return 'launch launch/patient patient/*.read observation/*.read medication/*.read encounter/*.read condition/*.read diagnosticreport/*.read documentreference/*.read allergyintolerance/*.read appointment/*.read immunization/*.read procedure/*.read questionnaire/*.read questionnaireresponse/*.read openid fhirUser ' +
+           'context-user context-fhirUser context-enc_date context-user_ip context-syslogin ' +
+           'context-user_timestamp context-workstation_id context-csn context-pat_id';
   }
 
   async loadInitialData() {
