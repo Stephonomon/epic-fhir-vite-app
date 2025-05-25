@@ -1,15 +1,20 @@
 {
   "name": "epic-fhir-vite-app",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest",
+    "lint": "eslint src --ext .js,.jsx --report-unused-disable-directives --max-warnings 0"
   },
   "devDependencies": {
-    "vite": "^5.0.0"
+    "vite": "^5.0.0",
+    "vitest": "^1.0.0",
+    "eslint": "^8.55.0",
+    "eslint-plugin-import": "^2.29.0"
   },
   "dependencies": {
     "fhirclient": "^2.5.2",
