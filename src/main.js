@@ -255,6 +255,12 @@ async loadInitialData() {
 
 // Initialize the app when the document is loaded
 document.addEventListener('DOMContentLoaded', () => {
+  // Initialize Lucide icons
+  if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+  }
+  
+  // Initialize the app
   const app = new EHRAssistantApp();
   app.init().catch(err => {
     console.error('Failed to initialize app:', err);

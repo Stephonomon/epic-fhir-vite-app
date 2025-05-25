@@ -1,5 +1,5 @@
 // src/uiManager.js
-// Centralized UI management for the EHR Assistant
+// Updated UI manager with modern design, Lucide icons, and collapsible sections
 
 import { extractPatientInfo } from './fhirUtils.js';
 import { marked } from 'marked';
@@ -10,6 +10,7 @@ export class UIManager {
     this.searchHistory = [];
     this.rawDataCache = {};
     this.eventHandlers = new Map();
+    this.collapsedSections = new Set(); // Track collapsed sections
     this.setupDOMReferences();
   }
 
@@ -35,29 +36,28 @@ export class UIManager {
       patientNameEl: document.querySelector('.patient-name'),
       patientAgeGenderEl: document.getElementById('patient-age-gender'),
       patientMrnEl: document.getElementById('patient-mrn'),
-      patientCsnEl: document.getElementById('patient-csn'),
-      // Context indicators
-      indicators: {
-        patient: document.getElementById('patient-indicator'),
-        vitals: document.getElementById('vitals-indicator'),
-        meds: document.getElementById('meds-indicator'),
-        encounters: document.getElementById('encounters-indicator'),
-        conditions: document.getElementById('conditions-indicator'),
-        enhanced: document.getElementById('enhanced-indicator')
-      }
+      patientCsnEl: document.getElementById('patient-csn')
     };
   }
 
   setupUIListeners() {
-    // Settings toggle
-    this.dom.settingsToggle?.addEventListener('click', () => this.toggleSettings());
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+
+    // Settings toggle with modern animation
+    this.dom.settingsToggle?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleSettings();
+    });
     
     // Data inspector toggle
     this.dom.inspectorToggle?.addEventListener('click', () => this.toggleDataInspector());
     
     // Inspector close button
     this.dom.inspectorClose?.addEventListener('click', () => {
-      this.dom.dataInspector.style.display = 'none';
+      this.hideDataInspector();
     });
     
     // Context toggles (checkboxes)
@@ -102,17 +102,63 @@ export class UIManager {
       const searchId = this.dom.dataViewerSelect.value;
       if (searchId && this.rawDataCache[searchId]) {
         navigator.clipboard.writeText(JSON.stringify(this.rawDataCache[searchId], null, 2));
-        this.dom.copyRawDataBtn.innerHTML = '✓';
-        setTimeout(() => this.dom.copyRawDataBtn.innerHTML = '📋', 1000);
+        const originalIcon = this.dom.copyRawDataBtn.innerHTML;
+        this.dom.copyRawDataBtn.innerHTML = '<i data-lucide="check" size="16"></i>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        setTimeout(() => {
+          this.dom.copyRawDataBtn.innerHTML = originalIcon;
+          if (typeof lucide !== 'undefined') lucide.createIcons();
+        }, 1500);
       }
     });
+    
+    // Setup collapsible sections
+    this.setupCollapsibleSections();
     
     // Close dropdowns when clicking outside
     document.addEventListener('click', (e) => {
       if (!e.target.closest('#settings-panel') && !e.target.closest('#settings-toggle')) {
-        this.dom.settingsPanel.style.display = 'none';
+        this.hideSettings();
       }
     });
+
+    // Chat input auto-resize
+    this.dom.chatInput?.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    });
+  }
+
+  setupCollapsibleSections() {
+    // Make toggleSection globally available
+    window.toggleSection = (sectionId) => {
+      this.toggleSection(sectionId);
+    };
+  }
+
+  toggleSection(sectionId) {
+    const content = document.getElementById(sectionId + '-content');
+    const header = content?.previousElementSibling;
+    const icon = header?.querySelector('.collapse-icon');
+    
+    if (!content || !header || !icon) return;
+
+    const isCollapsed = this.collapsedSections.has(sectionId);
+    
+    if (isCollapsed) {
+      // Expand
+      content.classList.remove('collapsed');
+      header.classList.remove('collapsed');
+      this.collapsedSections.delete(sectionId);
+    } else {
+      // Collapse
+      content.classList.add('collapsed');
+      header.classList.add('collapsed');
+      this.collapsedSections.add(sectionId);
+    }
+    
+    // Update icon rotation with smooth transition
+    icon.style.transform = isCollapsed ? 'rotate(0deg)' : 'rotate(-90deg)';
   }
 
   // Event emitter methods
@@ -137,41 +183,42 @@ export class UIManager {
   }
 
   toggleSettings() {
-    const isVisible = this.dom.settingsPanel.style.display === 'block';
-    this.dom.settingsPanel.style.display = isVisible ? 'none' : 'block';
-    
+    this.dom.settingsPanel?.classList.toggle('active');
     // Close data inspector if open
-    if (!isVisible) {
-      this.dom.dataInspector.style.display = 'none';
+    if (this.dom.settingsPanel?.classList.contains('active')) {
+      this.hideDataInspector();
     }
+  }
+
+  hideSettings() {
+    this.dom.settingsPanel?.classList.remove('active');
   }
 
   toggleDataInspector() {
-    const isVisible = this.dom.dataInspector.style.display === 'block';
-    this.dom.dataInspector.style.display = isVisible ? 'none' : 'block';
+    const isVisible = this.dom.dataInspector?.classList.contains('active');
     
-    // Close settings if open
-    if (!isVisible) {
-      this.dom.settingsPanel.style.display = 'none';
+    if (isVisible) {
+      this.hideDataInspector();
+    } else {
+      this.showDataInspector();
     }
   }
 
-  updateContextIndicators(config) {
-    const indicatorMap = {
-      'patient': config.includePatient,
-      'vitals': config.includeVitals,
-      'meds': config.includeMeds,
-      'encounters': config.includeEncounters,
-      'conditions': config.includeConditions,
-      'enhanced': config.useEnhancedChat
-    };
-    
-    Object.entries(indicatorMap).forEach(([key, enabled]) => {
-      const indicator = this.dom.indicators[key];
-      if (indicator) {
-        indicator.className = `context-indicator ${enabled ? 'enabled' : 'disabled'}`;
+  showDataInspector() {
+    this.dom.dataInspector?.classList.add('active');
+    this.dom.dataInspector.style.display = 'flex';
+    // Close settings if open
+    this.hideSettings();
+  }
+
+  hideDataInspector() {
+    this.dom.dataInspector?.classList.remove('active');
+    // Use timeout to allow animation to complete before hiding
+    setTimeout(() => {
+      if (!this.dom.dataInspector?.classList.contains('active')) {
+        this.dom.dataInspector.style.display = 'none';
       }
-    });
+    }, 300);
   }
 
   // Patient Information Display
@@ -209,7 +256,7 @@ export class UIManager {
     const welcomeHTML = `
       <div class="welcome-message">
         <div class="welcome-header">
-          <span class="icon">🤖</span>
+          <i data-lucide="bot" size="32"></i>
           <h3>Welcome to EHR Assistant</h3>
         </div>
         <p>I can help you analyze patient data, answer questions about medications, vitals, conditions, and more. Ask me anything about this patient!</p>
@@ -227,6 +274,12 @@ export class UIManager {
     `;
     
     this.dom.chatHistory.innerHTML = welcomeHTML;
+    
+    // Reinitialize icons
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+    
     this.attachSuggestedQuestionListeners();
   }
 
@@ -250,7 +303,10 @@ export class UIManager {
     let toolInfo = '';
     if (toolCalls && toolCalls.length > 0) {
       const tools = toolCalls.map(call => call.function).join(', ');
-      toolInfo = `<div class="tool-usage">🔍 Searched: ${tools}</div>`;
+      toolInfo = `<div class="tool-usage">
+        <i data-lucide="search" size="14"></i>
+        Searched: ${tools}
+      </div>`;
     }
     
     messageDiv.innerHTML = `
@@ -261,17 +317,33 @@ export class UIManager {
       ${toolInfo}
       <div class="message-content">${role === 'assistant' ? marked.parse(content) : content}</div>
       <div class="message-actions">
-        <button onclick="window.uiManager.copyMessage(this)" title="Copy message">📋</button>
-        ${role === 'assistant' ? '<button onclick="window.uiManager.askFollowUp(this)" title="Ask follow-up">💬</button>' : ''}
+        <button onclick="window.uiManager.copyMessage(this)" title="Copy message">
+          <i data-lucide="copy" size="12"></i>
+        </button>
+        ${role === 'assistant' ? `<button onclick="window.uiManager.askFollowUp(this)" title="Ask follow-up">
+          <i data-lucide="message-circle" size="12"></i>
+        </button>` : ''}
       </div>
     `;
     
     this.dom.chatHistory.appendChild(messageDiv);
-    this.dom.chatHistory.scrollTop = this.dom.chatHistory.scrollHeight;
+    
+    // Initialize icons for the new message
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+    
+    this.scrollToBottom();
+  }
+
+  scrollToBottom() {
+    this.dom.chatHistory.scrollTo({
+      top: this.dom.chatHistory.scrollHeight,
+      behavior: 'smooth'
+    });
   }
 
   clearChat() {
-    this.dom.chatHistory.innerHTML = '';
     this.searchHistory = [];
     this.rawDataCache = {};
     this.updateSearchHistoryDisplay();
@@ -325,7 +397,7 @@ export class UIManager {
         <div class="search-params">${Object.keys(search.parameters).length ? 
           Object.entries(search.parameters).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ') : 
           'No parameters'}</div>
-        <div class="search-status">${search.status}</div>
+        <span class="search-status">${search.status}</span>
       </div>
     `).join('');
     
@@ -371,8 +443,15 @@ export class UIManager {
   copyMessage(button) {
     const messageContent = button.closest('.chat-message').querySelector('.message-content');
     navigator.clipboard.writeText(messageContent.textContent);
-    button.innerHTML = '✓';
-    setTimeout(() => button.innerHTML = '📋', 1000);
+    
+    const originalIcon = button.innerHTML;
+    button.innerHTML = '<i data-lucide="check" size="12"></i>';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    
+    setTimeout(() => {
+      button.innerHTML = originalIcon;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }, 1500);
   }
 
   askFollowUp(button) {
