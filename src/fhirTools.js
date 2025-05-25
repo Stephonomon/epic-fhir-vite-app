@@ -1,5 +1,292 @@
 // src/fhirTools.js
-// FHIR-specific tools for LLM function calling
+// Refactored FHIR-specific tools for LLM function calling with modular architecture
+
+// Polyfill for atob if not available (for decoding base64)
+if (typeof atob === 'undefined') {
+  global.atob = function(str) {
+    return Buffer.from(str, 'base64').toString('binary');
+  };
+}
+
+// Define FHIR resource configurations
+const FHIR_RESOURCES = {
+  AllergyIntolerance: {
+    searchParams: {
+      clinical_status: { param: 'clinical-status', type: 'token' },
+      verification_status: { param: 'verification-status', type: 'token' },
+      type: { param: 'type', type: 'token' },
+      category: { param: 'category', type: 'token' },
+      criticality: { param: 'criticality', type: 'token' },
+      date: { param: 'date', type: 'date' },
+      last_date: { param: 'last-date', type: 'date' },
+      onset: { param: 'onset', type: 'date' }
+    },
+    defaultSort: '-date',
+    defaultCount: 10
+  },
+  
+  Appointment: {
+    searchParams: {
+      status: { param: 'status', type: 'token' },
+      appointment_type: { param: 'appointment-type', type: 'token' },
+      service_type: { param: 'service-type', type: 'token' },
+      specialty: { param: 'specialty', type: 'token' },
+      practitioner: { param: 'practitioner', type: 'reference' },
+      location: { param: 'location', type: 'reference' },
+      date: { param: 'date', type: 'date' },
+      created: { param: 'created', type: 'date' }
+    },
+    defaultSort: '-date',
+    defaultCount: 10
+  },
+  
+  Binary: {
+    searchParams: {
+      contenttype: { param: 'contenttype', type: 'token' },
+      securityContext: { param: 'securityContext', type: 'reference' },
+      _lastUpdated: { param: '_lastUpdated', type: 'date' }
+    },
+    defaultSort: '-_lastUpdated',
+    defaultCount: 10
+  },
+  
+  Condition: {
+    searchParams: {
+      clinical_status: { param: 'clinical-status', type: 'token' },
+      verification_status: { param: 'verification-status', type: 'token' },
+      category: { param: 'category', type: 'token' },
+      severity: { param: 'severity', type: 'token' },
+      code: { param: 'code', type: 'token' },
+      body_site: { param: 'body-site', type: 'token' },
+      onset_date: { param: 'onset-date', type: 'date' },
+      recorded_date: { param: 'recorded-date', type: 'date' },
+      abatement_date: { param: 'abatement-date', type: 'date' }
+    },
+    defaultSort: '-recorded-date',
+    defaultCount: 10
+  },
+  
+  DiagnosticReport: {
+    searchParams: {
+      status: { param: 'status', type: 'token' },
+      category: { param: 'category', type: 'token' },
+      code: { param: 'code', type: 'token' },
+      conclusion: { param: 'conclusion', type: 'token' },
+      date: { param: 'date', type: 'date' },
+      issued: { param: 'issued', type: 'date' },
+      performer: { param: 'performer', type: 'reference' },
+      results_interpreter: { param: 'results-interpreter', type: 'reference' },
+      specimen: { param: 'specimen', type: 'reference' }
+    },
+    defaultSort: '-date',
+    defaultCount: 10
+  },
+  
+  DocumentReference: {
+    searchParams: {
+      status: { param: 'status', type: 'token' },
+      docstatus: { param: 'docstatus', type: 'token' },
+      type: { param: 'type', type: 'token' },
+      category: { param: 'category', type: 'token' },
+      subject: { param: 'subject', type: 'reference' },
+      patient: { param: 'patient', type: 'reference' },
+      encounter: { param: 'encounter', type: 'reference' },
+      author: { param: 'author', type: 'reference' },
+      custodian: { param: 'custodian', type: 'reference' },
+      authenticator: { param: 'authenticator', type: 'reference' },
+      date: { param: 'date', type: 'date' },
+      period: { param: 'period', type: 'date' },
+      created: { param: 'created', type: 'date' }
+    },
+    defaultSort: '-date',
+    defaultCount: 10
+  },
+  
+  Encounter: {
+    searchParams: {
+      status: { param: 'status', type: 'token' },
+      class: { param: 'class', type: 'token' },
+      type: { param: 'type', type: 'token' },
+      service_type: { param: 'service-type', type: 'token' },
+      participant: { param: 'participant', type: 'reference' },
+      practitioner: { param: 'practitioner', type: 'reference' },
+      location: { param: 'location', type: 'reference' },
+      service_provider: { param: 'service-provider', type: 'reference' },
+      date: { param: 'date', type: 'date' },
+      period: { param: 'period', type: 'date' }
+    },
+    defaultSort: '-date',
+    defaultCount: 10
+  },
+  
+  Immunization: {
+    searchParams: {
+      status: { param: 'status', type: 'token' },
+      vaccine_code: { param: 'vaccine-code', type: 'token' },
+      reason_code: { param: 'reason-code', type: 'token' },
+      location: { param: 'location', type: 'reference' },
+      performer: { param: 'performer', type: 'reference' },
+      date: { param: 'date', type: 'date' },
+      lot_number: { param: 'lot-number', type: 'string' }
+    },
+    defaultSort: '-date',
+    defaultCount: 10
+  },
+  
+  Medication: {
+    searchParams: {
+      code: { param: 'code', type: 'token' },
+      status: { param: 'status', type: 'token' },
+      form: { param: 'form', type: 'token' },
+      manufacturer: { param: 'manufacturer', type: 'reference' },
+      ingredient: { param: 'ingredient', type: 'reference' },
+      ingredient_code: { param: 'ingredient-code', type: 'token' },
+      lot_number: { param: 'lot-number', type: 'string' },
+      expiration_date: { param: 'expiration-date', type: 'date' }
+    },
+    defaultSort: '-_lastUpdated',
+    defaultCount: 10
+  },
+  
+  MedicationRequest: {
+    searchParams: {
+      status: { param: 'status', type: 'token' },
+      intent: { param: 'intent', type: 'token' },
+      category: { param: 'category', type: 'token' },
+      priority: { param: 'priority', type: 'token' },
+      code: { param: 'code', type: 'token' },
+      medication: { param: 'medication', type: 'reference' },
+      requester: { param: 'requester', type: 'reference' },
+      intended_dispenser: { param: 'intended-dispenser', type: 'reference' },
+      authoredon: { param: 'authoredon', type: 'date' },
+      effective_date: { param: 'effective-date', type: 'date' }
+    },
+    defaultSort: '-authoredon',
+    defaultCount: 10
+  },
+  
+  Observation: {
+    searchParams: {
+      status: { param: 'status', type: 'token' },
+      category: { param: 'category', type: 'token' },
+      code: { param: 'code', type: 'token' },
+      value_concept: { param: 'value-concept', type: 'token' },
+      value_quantity: { param: 'value-quantity', type: 'quantity' },
+      value_string: { param: 'value-string', type: 'string' },
+      performer: { param: 'performer', type: 'reference' },
+      specimen: { param: 'specimen', type: 'reference' },
+      date: { param: 'date', type: 'date' },
+      issued: { param: 'issued', type: 'date' }
+    },
+    defaultSort: '-date',
+    defaultCount: 10
+  },
+  
+  Procedure: {
+    searchParams: {
+      status: { param: 'status', type: 'token' },
+      code: { param: 'code', type: 'token' },
+      category: { param: 'category', type: 'token' },
+      outcome: { param: 'outcome', type: 'token' },
+      performer: { param: 'performer', type: 'reference' },
+      location: { param: 'location', type: 'reference' },
+      reason_code: { param: 'reason-code', type: 'token' },
+      reason_reference: { param: 'reason-reference', type: 'reference' },
+      date: { param: 'date', type: 'date' },
+      performed: { param: 'performed', type: 'date' }
+    },
+    defaultSort: '-date',
+    defaultCount: 10
+  },
+  
+  Questionnaire: {
+    searchParams: {
+      status: { param: 'status', type: 'token' },
+      title: { param: 'title', type: 'string' },
+      code: { param: 'code', type: 'token' },
+      publisher: { param: 'publisher', type: 'string' },
+      subject_type: { param: 'subject-type', type: 'token' },
+      effective: { param: 'effective', type: 'date' },
+      date: { param: 'date', type: 'date' }
+    },
+    defaultSort: '-date',
+    defaultCount: 10
+  },
+  
+  QuestionnaireResponse: {
+    searchParams: {
+      status: { param: 'status', type: 'token' },
+      questionnaire: { param: 'questionnaire', type: 'reference' },
+      subject: { param: 'subject', type: 'reference' },
+      author: { param: 'author', type: 'reference' },
+      source: { param: 'source', type: 'reference' },
+      encounter: { param: 'encounter', type: 'reference' },
+      authored: { param: 'authored', type: 'date' }
+    },
+    defaultSort: '-authored',
+    defaultCount: 10
+  }
+};
+
+// Generic tool definitions generator
+function generateToolDefinition(resourceType, config) {
+  const parameters = {
+    type: "object",
+    properties: {
+      count: {
+        type: "integer",
+        description: "Maximum number of results to return",
+        default: config.defaultCount,
+        maximum: 200
+      }
+    },
+    required: []
+  };
+
+  // Add search parameters based on configuration
+  Object.entries(config.searchParams).forEach(([key, param]) => {
+    if (param.type === 'token') {
+      parameters.properties[key] = {
+        type: "string",
+        description: `${key.replace(/_/g, ' ')} for filtering`
+      };
+    } else if (param.type === 'date') {
+      parameters.properties[`${key}_start`] = {
+        type: "string",
+        description: `Start date for ${key.replace(/_/g, ' ')} (YYYY-MM-DD)`
+      };
+      parameters.properties[`${key}_end`] = {
+        type: "string",
+        description: `End date for ${key.replace(/_/g, ' ')} (YYYY-MM-DD)`
+      };
+    } else if (param.type === 'string') {
+      parameters.properties[key] = {
+        type: "string",
+        description: `${key.replace(/_/g, ' ')} for filtering`
+      };
+    } else if (param.type === 'reference') {
+      parameters.properties[`${key}_id`] = {
+        type: "string",
+        description: `ID of ${key.replace(/_/g, ' ')} resource`
+      };
+    }
+  });
+
+  // Add text search parameter
+  parameters.properties.text_search = {
+    type: "string",
+    description: `Text search across ${resourceType} resources`
+  };
+
+  return {
+    type: "function",
+    function: {
+      name: `search_${resourceType.toLowerCase()}`,
+      description: `Search for ${resourceType} resources with flexible filtering`,
+      parameters
+    }
+  };
+}
 
 export class FHIRTools {
   constructor(client, backendUrl) {
@@ -7,637 +294,513 @@ export class FHIRTools {
     this.backendUrl = backendUrl;
   }
 
-  // Define available FHIR tools for the LLM
+  // Dynamically generate tool definitions
   getToolDefinitions() {
-    return [
-      {
-        type: "function",
-        function: {
-          name: "search_observations",
-          description: "Search for patient observations (vital signs, lab results, etc.) with flexible filtering",
-          parameters: {
-            type: "object",
-            properties: {
-              category: {
+    const tools = [];
+
+    // Generate search tools for each resource type
+    Object.entries(FHIR_RESOURCES).forEach(([resourceType, config]) => {
+      tools.push(generateToolDefinition(resourceType, config));
+    });
+
+    // Add special tools
+    tools.push({
+      type: "function",
+      function: {
+        name: "get_patient_summary",
+        description: "Get a comprehensive summary of patient demographics and basic info",
+        parameters: {
+          type: "object",
+          properties: {},
+          required: []
+        }
+      }
+    });
+
+    tools.push({
+      type: "function",
+      function: {
+        name: "search_all_resources",
+        description: "Search across multiple resource types with a single query",
+        parameters: {
+          type: "object",
+          properties: {
+            resource_types: {
+              type: "array",
+              items: {
                 type: "string",
-                description: "Observation category (e.g., 'vital-signs', 'laboratory', 'exam')",
-                enum: ["vital-signs", "laboratory", "exam", "imaging", "procedure", "social-history", "functional-status", "survey"]
+                enum: Object.keys(FHIR_RESOURCES)
               },
-              code: {
-                type: "string", 
-                description: "LOINC or SNOMED code for specific observation type"
-              },
-              code_text: {
-                type: "string",
-                description: "Search by observation name/text (e.g., 'blood pressure', 'hemoglobin', 'weight')"
-              },
-              date_range: {
-                type: "object",
-                properties: {
-                  start: { type: "string", description: "Start date (YYYY-MM-DD)" },
-                  end: { type: "string", description: "End date (YYYY-MM-DD)" }
-                }
-              },
-              count: {
-                type: "integer",
-                description: "Maximum number of results to return",
-                default: 25,
-                maximum: 200
-              },
-              status: {
-                type: "string",
-                description: "Observation status",
-                enum: ["registered", "preliminary", "final", "amended", "corrected", "cancelled", "entered-in-error", "unknown"]
-              },
-              include_components: {
-                type: "boolean",
-                description: "Include observations with multiple components (like BP with systolic/diastolic)",
-                default: true
+              description: "Resource types to search"
+            },
+            text_query: {
+              type: "string",
+              description: "Text to search across resources"
+            },
+            date_range: {
+              type: "object",
+              properties: {
+                start: { type: "string", description: "Start date (YYYY-MM-DD)" },
+                end: { type: "string", description: "End date (YYYY-MM-DD)" }
               }
             },
-            required: []
-          }
-        }
-      },
-      {
-        type: "function", 
-        function: {
-          name: "search_medications",
-          description: "Search for patient medications with filtering options",
-          parameters: {
-            type: "object",
-            properties: {
-              status: {
-                type: "string",
-                description: "Medication status",
-                enum: ["active", "completed", "cancelled", "draft", "entered-in-error", "stopped", "on-hold", "unknown"]
-              },
-              medication_name: {
-                type: "string",
-                description: "Name or partial name of medication to search for"
-              },
-              date_range: {
-                type: "object", 
-                properties: {
-                  start: { type: "string", description: "Start date (YYYY-MM-DD)" },
-                  end: { type: "string", description: "End date (YYYY-MM-DD)" }
-                }
-              },
-              count: {
-                type: "integer",
-                description: "Maximum number of results",
-                default: 25,
-                maximum: 100
-              },
-              include_historical: {
-                type: "boolean",
-                description: "Include discontinued/historical medications",
-                default: true
-              }
+            count_per_type: {
+              type: "integer",
+              default: 10,
+              maximum: 50
             }
-          }
+          },
+          required: ["resource_types"]
         }
-      },
-      {
-        type: "function",
-        function: {
-          name: "search_conditions",
-          description: "Search for patient conditions/problems with filtering",
-          parameters: {
-            type: "object",
-            properties: {
-              clinical_status: {
-                type: "string", 
-                description: "Clinical status of condition",
-                enum: ["active", "inactive", "resolved", "remission", "relapse", "well-controlled", "poorly-controlled"]
-              },
-              verification_status: {
-                type: "string",
-                description: "Verification status of condition", 
-                enum: ["unconfirmed", "provisional", "differential", "confirmed", "refuted", "entered-in-error"]
-              },
-              category: {
-                type: "string",
-                description: "Condition category",
-                enum: ["problem-list-item", "health-concern", "encounter-diagnosis", "billing-diagnosis"]
-              },
-              condition_name: {
-                type: "string",
-                description: "Name or partial name of condition to search for"
-              },
-              condition_code: {
-                type: "string",
-                description: "ICD-10 or SNOMED code for specific condition"
-              },
-              date_range: {
-                type: "object",
-                properties: {
-                  start: { type: "string", description: "Start date (YYYY-MM-DD)" },
-                  end: { type: "string", description: "End date (YYYY-MM-DD)" }
-                }
-              },
-              count: {
-                type: "integer",
-                default: 25,
-                maximum: 100
-              },
-              include_resolved: {
-                type: "boolean",
-                description: "Include resolved/inactive conditions",
-                default: true
-              }
+      }
+    });
+
+    tools.push({
+      type: "function",
+      function: {
+        name: "get_clinical_note_content",
+        description: "Retrieve the actual content of a clinical note using its Binary resource ID",
+        parameters: {
+          type: "object",
+          properties: {
+            binary_id: {
+              type: "string",
+              description: "The Binary resource ID from DocumentReference contentUrls"
+            },
+            format: {
+              type: "string",
+              description: "Desired format for the content",
+              enum: ["html", "rtf", "raw"],
+              default: "html"
             }
-          }
+          },
+          required: ["binary_id"]
         }
-      },
-      {
-        type: "function",
-        function: {
-          name: "search_encounters", 
-          description: "Search for patient encounters/visits",
-          parameters: {
-            type: "object",
-            properties: {
-              encounter_type: {
-                type: "string",
-                description: "Type of encounter (e.g., 'office visit', 'emergency', 'inpatient', 'telehealth')"
-              },
-              encounter_class: {
-                type: "string",
-                description: "Encounter class",
-                enum: ["ambulatory", "emergency", "inpatient", "outpatient", "observation", "virtual", "home-health"]
-              },
-              status: {
-                type: "string",
-                enum: ["planned", "arrived", "triaged", "in-progress", "onleave", "finished", "cancelled", "entered-in-error", "unknown"]
-              },
-              date_range: {
-                type: "object",
-                properties: {
-                  start: { type: "string", description: "Start date (YYYY-MM-DD)" },
-                  end: { type: "string", description: "End date (YYYY-MM-DD)" }
-                }
-              },
-              provider_name: {
-                type: "string",
-                description: "Search by provider/practitioner name"
-              },
-              location_name: {
-                type: "string", 
-                description: "Search by location/facility name"
-              },
-              count: {
-                type: "integer",
-                default: 25,
-                maximum: 100
-              },
-              include_historical: {
-                type: "boolean",
-                description: "Include all historical encounters",
-                default: true
-              }
+      }
+    });
+
+    tools.push({
+      type: "function",
+      function: {
+        name: "search_clinical_notes_with_content",
+        description: "Search for clinical notes and optionally retrieve their content",
+        parameters: {
+          type: "object",
+          properties: {
+            patient_id: {
+              type: "string",
+              description: "Patient FHIR ID"
+            },
+            category: {
+              type: "string",
+              description: "Note category (should be 'clinical-note')",
+              default: "clinical-note"
+            },
+            type: {
+              type: "string",
+              description: "Note type (e.g., 'Progress Note', 'Discharge Documentation', 'Consultation')"
+            },
+            date_start: {
+              type: "string",
+              description: "Start date for note search (YYYY-MM-DD)"
+            },
+            date_end: {
+              type: "string",
+              description: "End date for note search (YYYY-MM-DD)"
+            },
+            encounter_id: {
+              type: "string",
+              description: "Encounter FHIR ID"
+            },
+            count: {
+              type: "integer",
+              description: "Maximum number of notes to return",
+              default: 10
+            },
+            include_content: {
+              type: "boolean",
+              description: "Whether to retrieve the actual note content",
+              default: false
             }
-          }
-        }
-      },
-      {
-        type: "function",
-        function: {
-          name: "search_diagnostic_reports",
-          description: "Search for diagnostic reports (lab reports, imaging reports, etc.)",
-          parameters: {
-            type: "object", 
-            properties: {
-              category: {
-                type: "string",
-                description: "Report category",
-                enum: ["LAB", "RAD", "PATH", "CARDIO", "ENDO", "NEURO", "DERM", "OTH", "AU", "BG", "CG", "CH", "CP", "CT", "GE", "HM", "ICU", "IMM", "LAB", "MB", "MCB", "MYC", "NMS", "NRS", "OBS", "OTH", "OUS", "PHR", "PHY", "PT", "RAD", "RX", "SP", "SR", "TX", "URN", "VR", "VUS", "XRC"]
-              },
-              status: {
-                type: "string",
-                enum: ["registered", "partial", "preliminary", "final", "amended", "corrected", "appended", "cancelled", "entered-in-error", "unknown"]
-              },
-              report_name: {
-                type: "string",
-                description: "Search by report name/type (e.g., 'CBC', 'chest x-ray', 'echocardiogram')"
-              },
-              report_code: {
-                type: "string",
-                description: "LOINC code for specific report type"
-              },
-              date_range: {
-                type: "object",
-                properties: {
-                  start: { type: "string", description: "Start date (YYYY-MM-DD)" },
-                  end: { type: "string", description: "End date (YYYY-MM-DD)" }
-                }
-              },
-              count: {
-                type: "integer",
-                default: 20,
-                maximum: 100
-              },
-              include_preliminary: {
-                type: "boolean",
-                description: "Include preliminary/partial reports",
-                default: false
-              }
-            }
-          }
-        }
-      },
-      {
-        type: "function",
-        function: {
-          name: "get_patient_summary",
-          description: "Get a comprehensive summary of patient demographics and basic info",
-          parameters: {
-            type: "object",
-            properties: {},
-            required: []
           }
         }
       }
-    ];
+    });
+
+    return tools;
   }
 
-  // Execute FHIR tool functions
+  // Generic search method
+  async searchResource(resourceType, parameters) {
+    const config = FHIR_RESOURCES[resourceType];
+    if (!config) {
+      throw new Error(`Unknown resource type: ${resourceType}`);
+    }
+
+    const queryParams = [];
+    
+    // Process parameters based on configuration
+    Object.entries(parameters).forEach(([key, value]) => {
+      if (value === undefined || value === null || key === 'count' || key === 'text_search') return;
+
+      const searchParam = config.searchParams[key];
+      if (searchParam) {
+        if (searchParam.type === 'date') {
+          // Handle date range parameters
+          if (key.endsWith('_start')) {
+            const baseKey = key.replace('_start', '');
+            const param = config.searchParams[baseKey];
+            if (param) queryParams.push(`${param.param}=ge${value}`);
+          } else if (key.endsWith('_end')) {
+            const baseKey = key.replace('_end', '');
+            const param = config.searchParams[baseKey];
+            if (param) queryParams.push(`${param.param}=le${value}`);
+          }
+        } else if (searchParam.type === 'reference' && key.endsWith('_id')) {
+          queryParams.push(`${searchParam.param}=${value}`);
+        } else {
+          queryParams.push(`${searchParam.param}=${value}`);
+        }
+      }
+    });
+
+    // Add text search if provided
+    if (parameters.text_search) {
+      queryParams.push(`_text=${encodeURIComponent(parameters.text_search)}`);
+    }
+
+    // Add sorting and count
+    queryParams.push(`_sort=${config.defaultSort}`);
+    queryParams.push(`_count=${parameters.count || config.defaultCount}`);
+
+    const path = `${resourceType}?${queryParams.join('&')}`;
+
+    try {
+      const data = await this.fetchResource(path);
+      return this.formatResults(resourceType, data, parameters);
+    } catch (error) {
+      console.warn(`Primary search failed for ${resourceType}:`, error.message);
+      
+      // Fallback strategies
+      const fallbackPath = `${resourceType}?_count=${parameters.count || config.defaultCount}`;
+      const data = await this.fetchResource(fallbackPath);
+      return this.formatResults(resourceType, data, parameters);
+    }
+  }
+
+  // Execute tool functions
   async executeTool(toolName, parameters) {
     try {
-      switch (toolName) {
-        case "search_observations":
-          return await this.searchObservations(parameters);
-        case "search_medications":
-          return await this.searchMedications(parameters);
-        case "search_conditions":
-          return await this.searchConditions(parameters);
-        case "search_encounters":
-          return await this.searchEncounters(parameters);
-        case "search_diagnostic_reports":
-          return await this.searchDiagnosticReports(parameters);
-        case "get_patient_summary":
-          return await this.getPatientSummary();
-        default:
-          throw new Error(`Unknown tool: ${toolName}`);
+      // Handle special tools
+      if (toolName === 'get_patient_summary') {
+        return await this.getPatientSummary();
+      } else if (toolName === 'search_all_resources') {
+        return await this.searchAllResources(parameters);
+      } else if (toolName === 'get_clinical_note_content') {
+        return await this.getClinicalNoteContent(parameters);
+      } else if (toolName === 'search_clinical_notes_with_content') {
+        return await this.searchClinicalNotesWithContent(parameters);
       }
+
+      // Handle resource-specific searches
+      const match = toolName.match(/^search_(.+)$/);
+      if (match) {
+        const resourceType = match[1].split('_').map(part => 
+          part.charAt(0).toUpperCase() + part.slice(1)
+        ).join('');
+        
+        // Handle special cases
+        const resourceMap = {
+          'Allergyintolerance': 'AllergyIntolerance',
+          'Diagnosticreport': 'DiagnosticReport',
+          'Documentreference': 'DocumentReference',
+          'Medicationrequest': 'MedicationRequest',
+          'Questionnaireresponse': 'QuestionnaireResponse',
+          'Binary': 'Binary'
+        };
+        
+        const actualResourceType = resourceMap[resourceType] || resourceType;
+        
+        if (FHIR_RESOURCES[actualResourceType]) {
+          return await this.searchResource(actualResourceType, parameters);
+        }
+      }
+
+      throw new Error(`Unknown tool: ${toolName}`);
     } catch (error) {
       return { error: `Failed to execute ${toolName}: ${error.message}` };
     }
   }
 
-  // Tool implementation methods
-  async searchObservations(params) {
-    let path = 'Observation';
-    const queryParams = [];
+  // Search across multiple resource types
+  async searchAllResources(params) {
+    const results = {};
+    const promises = [];
 
-    if (params.category) {
-      queryParams.push(`category=${params.category}`);
+    for (const resourceType of params.resource_types) {
+      const searchParams = {
+        count: params.count_per_type || 10
+      };
+
+      if (params.text_query) {
+        searchParams.text_search = params.text_query;
+      }
+
+      if (params.date_range) {
+        // Apply date range to appropriate date fields for each resource
+        const config = FHIR_RESOURCES[resourceType];
+        if (config) {
+          const dateParam = Object.keys(config.searchParams).find(key => 
+            config.searchParams[key].type === 'date' && key === 'date'
+          ) || Object.keys(config.searchParams).find(key => 
+            config.searchParams[key].type === 'date'
+          );
+
+          if (dateParam) {
+            if (params.date_range.start) searchParams[`${dateParam}_start`] = params.date_range.start;
+            if (params.date_range.end) searchParams[`${dateParam}_end`] = params.date_range.end;
+          }
+        }
+      }
+
+      promises.push(
+        this.searchResource(resourceType, searchParams)
+          .then(result => ({ resourceType, result }))
+          .catch(error => ({ resourceType, error: error.message }))
+      );
     }
-    if (params.code) {
-      queryParams.push(`code=${params.code}`);
+
+    const searchResults = await Promise.all(promises);
+    
+    searchResults.forEach(({ resourceType, result, error }) => {
+      results[resourceType] = error ? { error } : result;
+    });
+
+    return {
+      searchQuery: params.text_query || 'All resources',
+      dateRange: params.date_range || null,
+      results
+    };
+  }
+
+  // Get clinical note content from Binary resource
+  async getClinicalNoteContent(params) {
+    if (!params.binary_id) {
+      return { error: "Binary resource ID is required" };
     }
-    if (params.status) {
-      queryParams.push(`status=${params.status}`);
+
+    try {
+      // Extract just the ID from URLs like "Binary/xyz123"
+      const binaryId = params.binary_id.includes('/') ? 
+        params.binary_id.split('/').pop() : 
+        params.binary_id;
+
+      const binaryData = await this.fetchResource(`Binary/${binaryId}`);
+      
+      // Decode base64 content
+      let decodedContent = null;
+      if (binaryData.data) {
+        try {
+          // Decode base64 to string
+          decodedContent = atob(binaryData.data);
+          
+          // If it's RTF and user wants HTML, note that conversion is needed
+          if (binaryData.contentType === 'text/rtf' && params.format === 'html') {
+            return {
+              contentType: binaryData.contentType,
+              content: decodedContent,
+              note: "Content is in RTF format. Client-side conversion to HTML may be needed.",
+              binaryId: binaryId
+            };
+          }
+        } catch (decodeError) {
+          return { 
+            error: "Failed to decode binary content", 
+            details: decodeError.message,
+            binaryId: binaryId 
+          };
+        }
+      }
+
+      return {
+        binaryId: binaryId,
+        contentType: binaryData.contentType || "Unknown",
+        content: decodedContent || "No content found",
+        rawData: params.format === 'raw' ? binaryData : undefined
+      };
+    } catch (error) {
+      return { 
+        error: `Failed to retrieve binary content: ${error.message}`,
+        binaryId: params.binary_id
+      };
     }
-    if (params.date_range?.start) {
-      queryParams.push(`date=ge${params.date_range.start}`);
-    }
-    if (params.date_range?.end) {
-      queryParams.push(`date=le${params.date_range.end}`);
+  }
+
+  // Search clinical notes and optionally retrieve content
+  async searchClinicalNotesWithContent(params) {
+    // First, search for DocumentReferences
+    const searchParams = {
+      category: params.category || 'clinical-note',
+      text_search: params.type,
+      date_start: params.date_start,
+      date_end: params.date_end,
+      count: params.count || 10
+    };
+
+    // Build DocumentReference search path
+    let path = 'DocumentReference?';
+    const queryParams = [];
+    
+    if (params.patient_id) {
+      queryParams.push(`patient=${params.patient_id}`);
+    } else {
+      queryParams.push(`patient=${this.client.patient.id}`);
     }
     
-    queryParams.push(`_sort=-date`);
-    queryParams.push(`_count=${params.count || 25}`);
-
-    if (queryParams.length > 0) {
-      path += '?' + queryParams.join('&');
+    queryParams.push(`category=${searchParams.category}`);
+    
+    if (params.type) {
+      queryParams.push(`type:text=${encodeURIComponent(params.type)}`);
     }
+    
+    if (params.encounter_id) {
+      queryParams.push(`encounter=${params.encounter_id}`);
+    }
+    
+    if (params.date_start) {
+      queryParams.push(`date=ge${params.date_start}`);
+    }
+    
+    if (params.date_end) {
+      queryParams.push(`date=le${params.date_end}`);
+    }
+    
+    queryParams.push(`_count=${searchParams.count}`);
+    queryParams.push(`_sort=-date`);
+    
+    path += queryParams.join('&');
 
-    // Try primary search with all parameters
-    let data;
     try {
-      data = await this.fetchResource(path);
-    } catch (error) {
-      console.warn("Primary observation search failed:", error.message);
+      const documentData = await this.fetchResource(path);
+      const formattedDocs = this.formatDocumentReferenceResults(documentData, searchParams);
       
-      // Fallback 1: Try without date filtering
-      if (params.date_range) {
-        const fallbackParams = [];
-        if (params.category) fallbackParams.push(`category=${params.category}`);
-        if (params.code) fallbackParams.push(`code=${params.code}`);
-        if (params.status) fallbackParams.push(`status=${params.status}`);
-        fallbackParams.push(`_sort=-date`);
-        fallbackParams.push(`_count=${params.count || 25}`);
-        
-        try {
-          data = await this.fetchResource('Observation?' + fallbackParams.join('&'));
-          console.log("Observation fallback search (no dates) succeeded");
-        } catch (fallbackError) {
-          console.warn("Observation fallback search failed:", fallbackError.message);
-          
-          // Fallback 2: Basic category search only
-          if (params.category) {
-            try {
-              data = await this.fetchResource(`Observation?category=${params.category}&_count=${params.count || 25}`);
-              console.log("Basic observation category search succeeded");
-            } catch (categoryError) {
-              // Final fallback: All observations
-              data = await this.fetchResource(`Observation?_count=${params.count || 25}`);
-              console.log("Basic observation search used as final fallback");
+      // If content retrieval is requested
+      if (params.include_content && formattedDocs.documents.length > 0) {
+        // Retrieve content for each document
+        const docsWithContent = await Promise.all(
+          formattedDocs.documents.map(async (doc) => {
+            const contentResults = [];
+            
+            // Try to get content for each available Binary URL
+            for (const contentUrl of doc.contentUrls) {
+              if (contentUrl.binaryUrl) {
+                try {
+                  const content = await this.getClinicalNoteContent({
+                    binary_id: contentUrl.binaryUrl,
+                    format: contentUrl.contentType === 'text/html' ? 'html' : 'raw'
+                  });
+                  contentResults.push({
+                    ...contentUrl,
+                    ...content
+                  });
+                } catch (err) {
+                  contentResults.push({
+                    ...contentUrl,
+                    error: `Failed to retrieve content: ${err.message}`
+                  });
+                }
+              }
             }
-          } else {
-            // Final fallback: All observations
-            data = await this.fetchResource(`Observation?_count=${params.count || 25}`);
-            console.log("Basic observation search used as final fallback");
-          }
-        }
-      } else {
-        throw error;
-      }
-    }
-
-    return this.formatObservationResults(data, params.code_text);
-  }
-
-  async searchMedications(params) {
-    let path = 'MedicationRequest';
-    const queryParams = [];
-
-    if (params.status) {
-      queryParams.push(`status=${params.status}`);
-    }
-    if (params.date_range?.start) {
-      queryParams.push(`authoredon=ge${params.date_range.start}`);
-    }
-    if (params.date_range?.end) {
-      queryParams.push(`authoredon=le${params.date_range.end}`);
-    }
-
-    queryParams.push(`_sort=-authoredon`);
-    queryParams.push(`_count=${params.count || 25}`);
-
-    if (queryParams.length > 0) {
-      path += '?' + queryParams.join('&');
-    }
-
-    // First try with the constructed query
-    let data;
-    try {
-      data = await this.fetchResource(path);
-    } catch (error) {
-      console.warn("First medication search failed:", error.message);
-      
-      // Fallback: Try without date parameters (Epic might not support authoredon filtering)
-      if (params.date_range) {
-        const fallbackParams = [];
-        if (params.status) {
-          fallbackParams.push(`status=${params.status}`);
-        }
-        fallbackParams.push(`_sort=-date`); // Try different sort field
-        fallbackParams.push(`_count=${params.count || 25}`);
+            
+            return {
+              ...doc,
+              retrievedContent: contentResults
+            };
+          })
+        );
         
-        const fallbackPath = 'MedicationRequest?' + fallbackParams.join('&');
-        try {
-          data = await this.fetchResource(fallbackPath);
-          console.log("Fallback medication search succeeded");
-        } catch (fallbackError) {
-          console.warn("Fallback medication search failed:", fallbackError.message);
-          
-          // Final fallback: Basic search with no filters
-          data = await this.fetchResource(`MedicationRequest?_count=${params.count || 25}`);
-          console.log("Basic medication search used as final fallback");
-        }
-      } else {
-        throw error;
+        return {
+          ...formattedDocs,
+          documents: docsWithContent,
+          contentIncluded: true
+        };
       }
-    }
-
-    return this.formatMedicationResults(data, params.medication_name);
-  }
-
-  async searchConditions(params) {
-    let path = 'Condition';
-    const queryParams = [];
-
-    if (params.clinical_status) {
-      queryParams.push(`clinical-status=${params.clinical_status}`);
-    }
-    if (params.verification_status) {
-      queryParams.push(`verification-status=${params.verification_status}`);
-    }
-    if (params.category) {
-      queryParams.push(`category=${params.category}`);
-    }
-    if (params.condition_code) {
-      queryParams.push(`code=${params.condition_code}`);
-    }
-    if (params.date_range?.start) {
-      queryParams.push(`recorded-date=ge${params.date_range.start}`);
-    }
-    if (params.date_range?.end) {
-      queryParams.push(`recorded-date=le${params.date_range.end}`);
-    }
-
-    queryParams.push(`_sort=-recorded-date`);
-    queryParams.push(`_count=${params.count || 25}`);
-
-    if (queryParams.length > 0) {
-      path += '?' + queryParams.join('&');
-    }
-
-    // Try primary search
-    let data;
-    try {
-      data = await this.fetchResource(path);
-    } catch (error) {
-      console.warn("Primary condition search failed:", error.message);
       
-      // Fallback 1: Try with onset-date instead of recorded-date
-      if (params.date_range) {
-        const fallbackParams = [];
-        if (params.clinical_status) fallbackParams.push(`clinical-status=${params.clinical_status}`);
-        if (params.category) fallbackParams.push(`category=${params.category}`);
-        if (params.condition_code) fallbackParams.push(`code=${params.condition_code}`);
-        if (params.date_range?.start) fallbackParams.push(`onset-date=ge${params.date_range.start}`);
-        if (params.date_range?.end) fallbackParams.push(`onset-date=le=${params.date_range.end}`);
-        fallbackParams.push(`_count=${params.count || 25}`);
-        
-        try {
-          data = await this.fetchResource('Condition?' + fallbackParams.join('&'));
-          console.log("Condition fallback search (onset-date) succeeded");
-        } catch (fallbackError) {
-          console.warn("Condition onset-date fallback failed:", fallbackError.message);
-          
-          // Fallback 2: No date filtering
-          const noDateParams = [];
-          if (params.clinical_status) noDateParams.push(`clinical-status=${params.clinical_status}`);
-          if (params.category) noDateParams.push(`category=${params.category}`);
-          noDateParams.push(`_count=${params.count || 25}`);
-          
-          try {
-            data = await this.fetchResource('Condition?' + noDateParams.join('&'));
-            console.log("Condition search without dates succeeded");
-          } catch (noDateError) {
-            // Final fallback: Basic search
-            data = await this.fetchResource(`Condition?_count=${params.count || 25}`);
-            console.log("Basic condition search used as final fallback");
-          }
-        }
-      } else {
-        throw error;
-      }
-    }
-
-    return this.formatConditionResults(data, params.condition_name);
-  }
-
-  async searchEncounters(params) {
-    let path = 'Encounter';
-    const queryParams = [];
-
-    if (params.status) {
-      queryParams.push(`status=${params.status}`);
-    }
-    if (params.encounter_class) {
-      queryParams.push(`class=${params.encounter_class}`);
-    }
-    if (params.date_range?.start) {
-      queryParams.push(`date=ge${params.date_range.start}`);
-    }
-    if (params.date_range?.end) {
-      queryParams.push(`date=le${params.date_range.end}`);
-    }
-
-    queryParams.push(`_sort=-date`);
-    queryParams.push(`_count=${params.count || 25}`);
-
-    if (queryParams.length > 0) {
-      path += '?' + queryParams.join('&');
-    }
-
-    // Try primary search
-    let data;
-    try {
-      data = await this.fetchResource(path);
+      return formattedDocs;
     } catch (error) {
-      console.warn("Primary encounter search failed:", error.message);
-      
-      // Fallback 1: Try with period instead of date
-      if (params.date_range) {
-        const fallbackParams = [];
-        if (params.status) fallbackParams.push(`status=${params.status}`);
-        if (params.encounter_class) fallbackParams.push(`class=${params.encounter_class}`);
-        if (params.date_range?.start) fallbackParams.push(`period=ge${params.date_range.start}`);
-        if (params.date_range?.end) fallbackParams.push(`period=le${params.date_range.end}`);
-        fallbackParams.push(`_sort=-period`);
-        fallbackParams.push(`_count=${params.count || 25}`);
-        
-        try {
-          data = await this.fetchResource('Encounter?' + fallbackParams.join('&'));
-          console.log("Encounter fallback search (period) succeeded");
-        } catch (fallbackError) {
-          console.warn("Encounter period fallback failed:", fallbackError.message);
-          
-          // Fallback 2: No date filtering
-          const noDateParams = [];
-          if (params.status) noDateParams.push(`status=${params.status}`);
-          if (params.encounter_class) noDateParams.push(`class=${params.encounter_class}`);
-          noDateParams.push(`_count=${params.count || 25}`);
-          
-          try {
-            data = await this.fetchResource('Encounter?' + noDateParams.join('&'));
-            console.log("Encounter search without dates succeeded");
-          } catch (noDateError) {
-            // Final fallback: Basic search
-            data = await this.fetchResource(`Encounter?_count=${params.count || 25}`);
-            console.log("Basic encounter search used as final fallback");
-          }
-        }
-      } else {
-        throw error;
+      return { 
+        error: `Failed to search clinical notes: ${error.message}` 
+      };
+    }
+  }
+
+  // Format results based on resource type
+  formatResults(resourceType, data, params) {
+    if (!data?.entry?.length) {
+      return { 
+        resourceType,
+        message: `No ${resourceType} resources found matching the criteria.`,
+        count: 0
+      };
+    }
+
+    const formatter = this[`format${resourceType}Results`];
+    if (formatter) {
+      return formatter.call(this, data, params);
+    }
+
+    // Generic formatter for resources without specific formatters
+    return {
+      resourceType,
+      count: data.entry.length,
+      total: data.total,
+      entries: data.entry.map(entry => ({
+        id: entry.resource.id,
+        ...this.extractGenericResourceData(entry.resource)
+      }))
+    };
+  }
+
+  // Generic resource data extractor
+  extractGenericResourceData(resource) {
+    const data = {
+      resourceType: resource.resourceType,
+      status: resource.status || 'Unknown',
+      lastUpdated: resource.meta?.lastUpdated || 'Unknown'
+    };
+
+    // Extract common fields
+    if (resource.code) {
+      data.code = resource.code.text || 
+                 resource.code.coding?.[0]?.display || 
+                 resource.code.coding?.[0]?.code || 
+                 'Unknown';
+    }
+
+    if (resource.subject) {
+      data.subject = resource.subject.display || resource.subject.reference;
+    }
+
+    if (resource.encounter) {
+      data.encounter = resource.encounter.display || resource.encounter.reference;
+    }
+
+    if (resource.performer) {
+      data.performer = Array.isArray(resource.performer) 
+        ? resource.performer.map(p => p.display || p.reference).join(', ')
+        : resource.performer.display || resource.performer.reference;
+    }
+
+    // Extract dates
+    const dateFields = ['effectiveDateTime', 'authoredOn', 'date', 'issued', 'recorded', 'created'];
+    for (const field of dateFields) {
+      if (resource[field]) {
+        data.date = resource[field];
+        break;
       }
     }
 
-    return this.formatEncounterResults(data, params.encounter_type, params.provider_name, params.location_name);
-  }
-
-  async searchDiagnosticReports(params) {
-    let path = 'DiagnosticReport';
-    const queryParams = [];
-
-    if (params.category) {
-      queryParams.push(`category=${params.category}`);
-    }
-    if (params.status) {
-      queryParams.push(`status=${params.status}`);
-    }
-    if (params.report_code) {
-      queryParams.push(`code=${params.report_code}`);
-    }
-    if (params.date_range?.start) {
-      queryParams.push(`date=ge${params.date_range.start}`);
-    }
-    if (params.date_range?.end) {
-      queryParams.push(`date=le${params.date_range.end}`);
-    }
-
-    queryParams.push(`_sort=-date`);
-    queryParams.push(`_count=${params.count || 20}`);
-
-    if (queryParams.length > 0) {
-      path += '?' + queryParams.join('&');
-    }
-
-    // Try primary search
-    let data;
-    try {
-      data = await this.fetchResource(path);
-    } catch (error) {
-      console.warn("Primary diagnostic report search failed:", error.message);
-      
-      // Fallback 1: Try with effective date instead of date
-      if (params.date_range) {
-        const fallbackParams = [];
-        if (params.category) fallbackParams.push(`category=${params.category}`);
-        if (params.status) fallbackParams.push(`status=${params.status}`);
-        if (params.report_code) fallbackParams.push(`code=${params.report_code}`);
-        if (params.date_range?.start) fallbackParams.push(`effective-date=ge${params.date_range.start}`);
-        if (params.date_range?.end) fallbackParams.push(`effective-date=le${params.date_range.end}`);
-        fallbackParams.push(`_sort=-effective-date`);
-        fallbackParams.push(`_count=${params.count || 20}`);
-        
-        try {
-          data = await this.fetchResource('DiagnosticReport?' + fallbackParams.join('&'));
-          console.log("Diagnostic report fallback search (effective-date) succeeded");
-        } catch (fallbackError) {
-          console.warn("Diagnostic report effective-date fallback failed:", fallbackError.message);
-          
-          // Fallback 2: No date filtering
-          const noDateParams = [];
-          if (params.category) noDateParams.push(`category=${params.category}`);
-          if (params.status) noDateParams.push(`status=${params.status}`);
-          noDateParams.push(`_count=${params.count || 20}`);
-          
-          try {
-            data = await this.fetchResource('DiagnosticReport?' + noDateParams.join('&'));
-            console.log("Diagnostic report search without dates succeeded");
-          } catch (noDateError) {
-            // Final fallback: Basic search
-            data = await this.fetchResource(`DiagnosticReport?_count=${params.count || 20}`);
-            console.log("Basic diagnostic report search used as final fallback");
-          }
-        }
-      } else {
-        throw error;
-      }
-    }
-
-    return this.formatDiagnosticReportResults(data, params.report_name);
-  }
-
-  async getPatientSummary() {
-    const patientData = await this.fetchResource(`Patient/${this.client.patient.id}`);
-    return this.formatPatientSummary(patientData);
+    return data;
   }
 
   // Helper method to fetch FHIR resources
@@ -675,13 +838,28 @@ export class FHIRTools {
     return resp.json();
   }
 
-  // Result formatting methods
-  formatObservationResults(data, codeTextFilter) {
-    if (!data?.entry?.length) {
-      return { message: "No observations found matching the criteria." };
-    }
+  async getPatientSummary() {
+    const patientData = await this.fetchResource(`Patient/${this.client.patient.id}`);
+    return this.formatPatientSummary(patientData);
+  }
 
-    let observations = data.entry.map(entry => {
+  formatPatientSummary(patientData) {
+    const name = patientData.name?.[0]?.text || 
+                `${patientData.name?.[0]?.given?.join(' ')} ${patientData.name?.[0]?.family}`;
+    
+    return {
+      name: name,
+      gender: patientData.gender,
+      birthDate: patientData.birthDate,
+      id: patientData.id,
+      phone: patientData.telecom?.find(t => t.system === 'phone')?.value || "N/A",
+      email: patientData.telecom?.find(t => t.system === 'email')?.value || "N/A"
+    };
+  }
+
+  // Specific formatters for complex resources
+  formatObservationResults(data, params) {
+    const observations = data.entry.map(entry => {
       const obs = entry.resource;
       let value = "N/A";
       
@@ -709,6 +887,7 @@ export class FHIRTools {
       const observationName = obs.code?.text || obs.code?.coding?.[0]?.display || "Unknown";
       
       return {
+        id: obs.id,
         name: observationName,
         value: value,
         date: obs.effectiveDateTime || obs.effectivePeriod?.start || "Unknown date",
@@ -720,64 +899,50 @@ export class FHIRTools {
       };
     });
 
-    // Client-side filtering by observation name/text if specified
-    if (codeTextFilter) {
-      observations = observations.filter(obs => 
-        obs.name.toLowerCase().includes(codeTextFilter.toLowerCase())
-      );
-    }
-
     return {
+      resourceType: 'Observation',
       count: observations.length,
+      total: data.total,
       observations: observations
     };
   }
 
-  formatMedicationResults(data, nameFilter) {
-    if (!data?.entry?.length) {
-      return { message: "No medications found matching the criteria." };
-    }
-
-    let medications = data.entry.map(entry => {
+  formatMedicationRequestResults(data, params) {
+    const medications = data.entry.map(entry => {
       const med = entry.resource;
       const name = med.medicationCodeableConcept?.text || 
                   med.medicationReference?.display || 
                   'Unknown';
       
       return {
+        id: med.id,
         name: name,
         status: med.status,
+        intent: med.intent,
+        priority: med.priority,
         authoredOn: med.authoredOn,
         dosage: med.dosageInstruction?.[0]?.text || "No dosage info",
-        requester: med.requester?.display || "Unknown provider"
+        requester: med.requester?.display || "Unknown provider",
+        reasonCode: med.reasonCode?.map(r => r.text || r.coding?.[0]?.display).join(', ') || null,
+        note: med.note?.map(n => n.text).join('; ') || null
       };
     });
 
-    // Client-side filtering by medication name if specified
-    if (nameFilter) {
-      medications = medications.filter(med => 
-        med.name.toLowerCase().includes(nameFilter.toLowerCase())
-      );
-    }
-
     return {
+      resourceType: 'MedicationRequest',
       count: medications.length,
+      total: data.total,
       medications: medications
     };
   }
 
-  formatConditionResults(data, nameFilter) {
-    if (!data?.entry?.length) {
-      return { message: "No conditions found matching the criteria." };
-    }
-
-    let conditions = data.entry.map(entry => {
+  formatConditionResults(data, params) {
+    const conditions = data.entry.map(entry => {
       const condition = entry.resource;
       const name = condition.code?.text || 
                   condition.code?.coding?.[0]?.display || 
                   'Unknown condition';
 
-      // Get all available codes for better searching
       const codes = condition.code?.coding?.map(coding => ({
         system: coding.system,
         code: coding.code,
@@ -785,6 +950,7 @@ export class FHIRTools {
       })) || [];
 
       return {
+        id: condition.id,
         name: name,
         codes: codes,
         clinicalStatus: condition.clinicalStatus?.coding?.[0]?.display || condition.clinicalStatus?.text || "Unknown",
@@ -796,7 +962,6 @@ export class FHIRTools {
           cat.coding?.[0]?.display || cat.text || "Unknown"
         ).join(', ') || "Unknown",
         severity: condition.severity?.coding?.[0]?.display || condition.severity?.text || null,
-        stage: condition.stage?.[0]?.summary?.text || condition.stage?.[0]?.summary?.coding?.[0]?.display || null,
         bodySite: condition.bodySite?.map(site => 
           site.text || site.coding?.[0]?.display || "Unknown site"
         ).join(', ') || null,
@@ -804,43 +969,27 @@ export class FHIRTools {
       };
     });
 
-    // Client-side filtering by condition name if specified
-    if (nameFilter) {
-      conditions = conditions.filter(cond => 
-        cond.name.toLowerCase().includes(nameFilter.toLowerCase()) ||
-        cond.codes.some(code => 
-          code.display?.toLowerCase().includes(nameFilter.toLowerCase()) ||
-          code.code?.toLowerCase().includes(nameFilter.toLowerCase())
-        )
-      );
-    }
-
     return {
+      resourceType: 'Condition',
       count: conditions.length,
+      total: data.total,
       conditions: conditions
     };
   }
 
-  formatEncounterResults(data, typeFilter, providerFilter, locationFilter) {
-    if (!data?.entry?.length) {
-      return { message: "No encounters found matching the criteria." };
-    }
-
-    let encounters = data.entry.map(entry => {
+  formatEncounterResults(data, params) {
+    const encounters = data.entry.map(entry => {
       const enc = entry.resource;
       
-      // Get all encounter types/codes
       const types = enc.type?.map(type => 
         type.text || type.coding?.[0]?.display || "Unknown"
       ) || ["Unknown"];
 
-      // Get all participants (providers)
       const participants = enc.participant?.map(p => ({
         name: p.individual?.display || p.individual?.reference || "Unknown provider",
         type: p.type?.[0]?.coding?.[0]?.display || p.type?.[0]?.text || "Unknown role"
       })) || [];
 
-      // Get all locations
       const locations = enc.location?.map(loc => ({
         name: loc.location?.display || loc.location?.reference || "Unknown location",
         status: loc.status || "Unknown"
@@ -849,7 +998,7 @@ export class FHIRTools {
       return {
         id: enc.id,
         types: types,
-        type: types[0], // Primary type for backward compatibility
+        type: types[0],
         class: enc.class?.display || enc.class?.code || "Unknown",
         status: enc.status || "Unknown",
         period: {
@@ -862,64 +1011,33 @@ export class FHIRTools {
             "Unknown date"
         },
         participants: participants,
-        provider: participants[0]?.name || "Unknown provider", // Primary provider for backward compatibility
+        provider: participants[0]?.name || "Unknown provider",
         locations: locations,
-        location: locations[0]?.name || "Unknown location", // Primary location for backward compatibility
+        location: locations[0]?.name || "Unknown location",
         serviceProvider: enc.serviceProvider?.display || "Unknown organization",
         reasonCode: enc.reasonCode?.map(reason => 
           reason.text || reason.coding?.[0]?.display || "Unknown reason"
         ).join(', ') || null,
-        reasonReference: enc.reasonReference?.map(ref => ref.display || ref.reference).join(', ') || null,
         diagnosis: enc.diagnosis?.map(diag => ({
           condition: diag.condition?.display || diag.condition?.reference || "Unknown condition",
           use: diag.use?.coding?.[0]?.display || diag.use?.text || "Unknown",
           rank: diag.rank || null
-        })) || [],
-        hospitalization: enc.hospitalization ? {
-          admitSource: enc.hospitalization.admitSource?.text || enc.hospitalization.admitSource?.coding?.[0]?.display || null,
-          dischargeDisposition: enc.hospitalization.dischargeDisposition?.text || enc.hospitalization.dischargeDisposition?.coding?.[0]?.display || null
-        } : null
+        })) || []
       };
     });
 
-    // Client-side filtering
-    if (typeFilter) {
-      encounters = encounters.filter(enc => 
-        enc.types.some(type => type.toLowerCase().includes(typeFilter.toLowerCase()))
-      );
-    }
-    
-    if (providerFilter) {
-      encounters = encounters.filter(enc => 
-        enc.participants.some(participant => 
-          participant.name.toLowerCase().includes(providerFilter.toLowerCase())
-        )
-      );
-    }
-    
-    if (locationFilter) {
-      encounters = encounters.filter(enc => 
-        enc.locations.some(location => 
-          location.name.toLowerCase().includes(locationFilter.toLowerCase())
-        )
-      );
-    }
-
     return {
+      resourceType: 'Encounter',
       count: encounters.length,
+      total: data.total,
       encounters: encounters
     };
   }
 
-  formatDiagnosticReportResults(data, reportNameFilter) {
-    if (!data?.entry?.length) {
-      return { message: "No diagnostic reports found matching the criteria." };
-    }
-
-    let reports = data.entry.map(entry => {
+  formatDiagnosticReportResults(data, params) {
+    const reports = data.entry.map(entry => {
       const report = entry.resource;
       
-      // Get all codes for better searching
       const codes = report.code?.coding?.map(coding => ({
         system: coding.system,
         code: coding.code,
@@ -940,11 +1058,6 @@ export class FHIRTools {
         conclusionCode: report.conclusionCode?.map(code => 
           code.text || code.coding?.[0]?.display || "Unknown finding"
         ).join(', ') || null,
-        presentedForm: report.presentedForm?.map(form => ({
-          contentType: form.contentType,
-          title: form.title,
-          size: form.size
-        })) || [],
         performer: report.performer?.map(perf => 
           perf.display || perf.reference || "Unknown performer"
         ).join(', ') || "Unknown performer",
@@ -956,45 +1069,407 @@ export class FHIRTools {
         ).join(', ') || null,
         result: report.result?.map(res => 
           res.display || res.reference || "Unknown result"
-        ).join(', ') || null,
-        imagingStudy: report.imagingStudy?.map(study => 
-          study.display || study.reference || "Unknown study"
-        ).join(', ') || null,
-        media: report.media?.map(media => ({
-          comment: media.comment,
-          link: media.link?.display || media.link?.reference
-        })) || []
+        ).join(', ') || null
       };
     });
 
-    // Client-side filtering by report name if specified
-    if (reportNameFilter) {
-      reports = reports.filter(report => 
-        report.name.toLowerCase().includes(reportNameFilter.toLowerCase()) ||
-        report.codes.some(code => 
-          code.display?.toLowerCase().includes(reportNameFilter.toLowerCase()) ||
-          code.code?.toLowerCase().includes(reportNameFilter.toLowerCase())
-        )
-      );
-    }
-
     return {
+      resourceType: 'DiagnosticReport',
       count: reports.length,
+      total: data.total,
       reports: reports
     };
   }
 
-  formatPatientSummary(patientData) {
-    const name = patientData.name?.[0]?.text || 
-                `${patientData.name?.[0]?.given?.join(' ')} ${patientData.name?.[0]?.family}`;
-    
+  formatAllergyIntoleranceResults(data, params) {
+    const allergies = data.entry.map(entry => {
+      const allergy = entry.resource;
+      
+      return {
+        id: allergy.id,
+        code: allergy.code?.text || allergy.code?.coding?.[0]?.display || "Unknown allergen",
+        clinicalStatus: allergy.clinicalStatus?.coding?.[0]?.display || allergy.clinicalStatus?.text || "Unknown",
+        verificationStatus: allergy.verificationStatus?.coding?.[0]?.display || allergy.verificationStatus?.text || "Unknown",
+        type: allergy.type || "Unknown",
+        category: allergy.category?.join(', ') || "Unknown",
+        criticality: allergy.criticality || "Unknown",
+        onsetDateTime: allergy.onsetDateTime?.split('T')[0] || "Unknown",
+        recordedDate: allergy.recordedDate?.split('T')[0] || "Unknown",
+        recorder: allergy.recorder?.display || allergy.recorder?.reference || "Unknown",
+        asserter: allergy.asserter?.display || allergy.asserter?.reference || "Unknown",
+        lastOccurrence: allergy.lastOccurrence?.split('T')[0] || null,
+        reaction: allergy.reaction?.map(r => ({
+          substance: r.substance?.text || r.substance?.coding?.[0]?.display || "Unknown",
+          manifestation: r.manifestation?.map(m => 
+            m.text || m.coding?.[0]?.display || "Unknown"
+          ).join(', ') || "Unknown",
+          severity: r.severity || "Unknown",
+          onset: r.onset?.split('T')[0] || null
+        })) || []
+      };
+    });
+
     return {
-      name: name,
-      gender: patientData.gender,
-      birthDate: patientData.birthDate,
-      id: patientData.id,
-      phone: patientData.telecom?.find(t => t.system === 'phone')?.value || "N/A",
-      email: patientData.telecom?.find(t => t.system === 'email')?.value || "N/A"
+      resourceType: 'AllergyIntolerance',
+      count: allergies.length,
+      total: data.total,
+      allergies: allergies
+    };
+  }
+
+  formatAppointmentResults(data, params) {
+    const appointments = data.entry.map(entry => {
+      const appt = entry.resource;
+      
+      return {
+        id: appt.id,
+        status: appt.status || "Unknown",
+        serviceCategory: appt.serviceCategory?.map(cat => 
+          cat.text || cat.coding?.[0]?.display || "Unknown"
+        ).join(', ') || null,
+        serviceType: appt.serviceType?.map(type => 
+          type.text || type.coding?.[0]?.display || "Unknown"
+        ).join(', ') || null,
+        specialty: appt.specialty?.map(spec => 
+          spec.text || spec.coding?.[0]?.display || "Unknown"
+        ).join(', ') || null,
+        appointmentType: appt.appointmentType?.text || appt.appointmentType?.coding?.[0]?.display || null,
+        reasonCode: appt.reasonCode?.map(reason => 
+          reason.text || reason.coding?.[0]?.display || "Unknown"
+        ).join(', ') || null,
+        priority: appt.priority || null,
+        description: appt.description || null,
+        start: appt.start?.split('T')[0] || "Unknown",
+        end: appt.end?.split('T')[0] || null,
+        minutesDuration: appt.minutesDuration || null,
+        created: appt.created?.split('T')[0] || "Unknown",
+        participant: appt.participant?.map(p => ({
+          actor: p.actor?.display || p.actor?.reference || "Unknown",
+          required: p.required || "Unknown",
+          status: p.status || "Unknown"
+        })) || []
+      };
+    });
+
+    return {
+      resourceType: 'Appointment',
+      count: appointments.length,
+      total: data.total,
+      appointments: appointments
+    };
+  }
+
+  formatDocumentReferenceResults(data, params) {
+    const documents = data.entry.map(entry => {
+      const doc = entry.resource;
+      
+      // Extract Binary URLs for content retrieval
+      const contentUrls = doc.content?.map(cont => ({
+        contentType: cont.attachment?.contentType || "Unknown",
+        binaryUrl: cont.attachment?.url || null,
+        format: cont.format?.display || cont.format?.code || null
+      })) || [];
+      
+      return {
+        id: doc.id,
+        status: doc.status || "Unknown",
+        docStatus: doc.docStatus || null,
+        type: doc.type?.text || doc.type?.coding?.[0]?.display || "Unknown",
+        category: doc.category?.map(cat => 
+          cat.text || cat.coding?.[0]?.display || "Unknown"
+        ).join(', ') || null,
+        subject: doc.subject?.display || doc.subject?.reference || "Unknown",
+        date: doc.date?.split('T')[0] || "Unknown",
+        author: doc.author?.map(auth => 
+          auth.display || auth.reference || "Unknown"
+        ).join(', ') || null,
+        authenticator: doc.authenticator?.display || doc.authenticator?.reference || null,
+        custodian: doc.custodian?.display || doc.custodian?.reference || null,
+        description: doc.description || null,
+        // Include content URLs for Binary resource retrieval
+        contentUrls: contentUrls,
+        // Add note about how to retrieve content
+        contentRetrievalNote: contentUrls.length > 0 ? 
+          "To retrieve the actual note content, use the Binary resource IDs from contentUrls" : 
+          "No content URLs available",
+        context: {
+          encounter: doc.context?.encounter?.map(enc => 
+            enc.display || enc.reference || "Unknown"
+          ).join(', ') || null,
+          event: doc.context?.event?.map(ev => 
+            ev.text || ev.coding?.[0]?.display || "Unknown"
+          ).join(', ') || null,
+          period: doc.context?.period ? {
+            start: doc.context.period.start?.split('T')[0] || null,
+            end: doc.context.period.end?.split('T')[0] || null
+          } : null
+        }
+      };
+    });
+
+    return {
+      resourceType: 'DocumentReference',
+      count: documents.length,
+      total: data.total,
+      documents: documents,
+      note: "DocumentReference contains metadata about clinical notes. To retrieve the actual note content, use the Binary resource IDs found in each document's contentUrls array."
+    };
+  }
+
+  formatImmunizationResults(data, params) {
+    const immunizations = data.entry.map(entry => {
+      const imm = entry.resource;
+      
+      return {
+        id: imm.id,
+        status: imm.status || "Unknown",
+        vaccineCode: imm.vaccineCode?.text || imm.vaccineCode?.coding?.[0]?.display || "Unknown",
+        patient: imm.patient?.display || imm.patient?.reference || "Unknown",
+        encounter: imm.encounter?.display || imm.encounter?.reference || null,
+        occurrenceDateTime: imm.occurrenceDateTime?.split('T')[0] || imm.occurrenceString || "Unknown",
+        recorded: imm.recorded?.split('T')[0] || null,
+        primarySource: imm.primarySource || null,
+        location: imm.location?.display || imm.location?.reference || null,
+        manufacturer: imm.manufacturer?.display || imm.manufacturer?.reference || null,
+        lotNumber: imm.lotNumber || null,
+        expirationDate: imm.expirationDate || null,
+        site: imm.site?.text || imm.site?.coding?.[0]?.display || null,
+        route: imm.route?.text || imm.route?.coding?.[0]?.display || null,
+        doseQuantity: imm.doseQuantity ? 
+          `${imm.doseQuantity.value} ${imm.doseQuantity.unit || ''}` : null,
+        performer: imm.performer?.map(perf => ({
+          function: perf.function?.text || perf.function?.coding?.[0]?.display || "Unknown",
+          actor: perf.actor?.display || perf.actor?.reference || "Unknown"
+        })) || [],
+        reasonCode: imm.reasonCode?.map(reason => 
+          reason.text || reason.coding?.[0]?.display || "Unknown"
+        ).join(', ') || null,
+        reaction: imm.reaction?.map(r => ({
+          date: r.date?.split('T')[0] || null,
+          detail: r.detail?.display || r.detail?.reference || null,
+          reported: r.reported || null
+        })) || []
+      };
+    });
+
+    return {
+      resourceType: 'Immunization',
+      count: immunizations.length,
+      total: data.total,
+      immunizations: immunizations
+    };
+  }
+
+  formatProcedureResults(data, params) {
+    const procedures = data.entry.map(entry => {
+      const proc = entry.resource;
+      
+      return {
+        id: proc.id,
+        status: proc.status || "Unknown",
+        code: proc.code?.text || proc.code?.coding?.[0]?.display || "Unknown",
+        category: proc.category?.text || proc.category?.coding?.[0]?.display || null,
+        subject: proc.subject?.display || proc.subject?.reference || "Unknown",
+        encounter: proc.encounter?.display || proc.encounter?.reference || null,
+        performedDateTime: proc.performedDateTime?.split('T')[0] || null,
+        performedPeriod: proc.performedPeriod ? {
+          start: proc.performedPeriod.start?.split('T')[0] || null,
+          end: proc.performedPeriod.end?.split('T')[0] || null
+        } : null,
+        recorded: proc.recorded?.split('T')[0] || null,
+        performer: proc.performer?.map(perf => ({
+          function: perf.function?.text || perf.function?.coding?.[0]?.display || null,
+          actor: perf.actor?.display || perf.actor?.reference || "Unknown",
+          onBehalfOf: perf.onBehalfOf?.display || perf.onBehalfOf?.reference || null
+        })) || [],
+        location: proc.location?.display || proc.location?.reference || null,
+        reasonCode: proc.reasonCode?.map(reason => 
+          reason.text || reason.coding?.[0]?.display || "Unknown"
+        ).join(', ') || null,
+        bodySite: proc.bodySite?.map(site => 
+          site.text || site.coding?.[0]?.display || "Unknown"
+        ).join(', ') || null,
+        outcome: proc.outcome?.text || proc.outcome?.coding?.[0]?.display || null,
+        complication: proc.complication?.map(comp => 
+          comp.text || comp.coding?.[0]?.display || "Unknown"
+        ).join(', ') || null,
+        followUp: proc.followUp?.map(fu => 
+          fu.text || fu.coding?.[0]?.display || "Unknown"
+        ).join(', ') || null,
+        note: proc.note?.map(n => n.text).join('; ') || null
+      };
+    });
+
+    return {
+      resourceType: 'Procedure',
+      count: procedures.length,
+      total: data.total,
+      procedures: procedures
+    };
+  }
+
+  formatQuestionnaireResults(data, params) {
+    const questionnaires = data.entry.map(entry => {
+      const q = entry.resource;
+      
+      return {
+        id: q.id,
+        url: q.url || null,
+        identifier: q.identifier?.map(id => 
+          `${id.system || 'Unknown'}/${id.value || 'Unknown'}`
+        ).join(', ') || null,
+        version: q.version || null,
+        name: q.name || null,
+        title: q.title || "Unknown",
+        derivedFrom: q.derivedFrom?.join(', ') || null,
+        status: q.status || "Unknown",
+        experimental: q.experimental || null,
+        subjectType: q.subjectType?.join(', ') || null,
+        date: q.date?.split('T')[0] || "Unknown",
+        publisher: q.publisher || null,
+        description: q.description || null,
+        purpose: q.purpose || null,
+        effectivePeriod: q.effectivePeriod ? {
+          start: q.effectivePeriod.start?.split('T')[0] || null,
+          end: q.effectivePeriod.end?.split('T')[0] || null
+        } : null,
+        code: q.code?.map(c => 
+          c.text || c.coding?.[0]?.display || c.coding?.[0]?.code || "Unknown"
+        ).join(', ') || null,
+        itemCount: q.item?.length || 0
+      };
+    });
+
+    return {
+      resourceType: 'Questionnaire',
+      count: questionnaires.length,
+      total: data.total,
+      questionnaires: questionnaires
+    };
+  }
+
+  formatQuestionnaireResponseResults(data, params) {
+    const responses = data.entry.map(entry => {
+      const qr = entry.resource;
+      
+      return {
+        id: qr.id,
+        identifier: qr.identifier?.system && qr.identifier?.value ? 
+          `${qr.identifier.system}/${qr.identifier.value}` : null,
+        basedOn: qr.basedOn?.map(ref => ref.display || ref.reference).join(', ') || null,
+        partOf: qr.partOf?.map(ref => ref.display || ref.reference).join(', ') || null,
+        questionnaire: qr.questionnaire || "Unknown",
+        status: qr.status || "Unknown",
+        subject: qr.subject?.display || qr.subject?.reference || "Unknown",
+        encounter: qr.encounter?.display || qr.encounter?.reference || null,
+        authored: qr.authored?.split('T')[0] || "Unknown",
+        author: qr.author?.display || qr.author?.reference || null,
+        source: qr.source?.display || qr.source?.reference || null,
+        itemCount: qr.item?.length || 0,
+        items: qr.item?.map(item => ({
+          linkId: item.linkId || "Unknown",
+          text: item.text || null,
+          answer: item.answer?.map(ans => {
+            if (ans.valueString) return ans.valueString;
+            if (ans.valueBoolean !== undefined) return ans.valueBoolean.toString();
+            if (ans.valueInteger !== undefined) return ans.valueInteger.toString();
+            if (ans.valueDecimal !== undefined) return ans.valueDecimal.toString();
+            if (ans.valueDate) return ans.valueDate;
+            if (ans.valueDateTime) return ans.valueDateTime;
+            if (ans.valueCoding) return ans.valueCoding.display || ans.valueCoding.code;
+            if (ans.valueReference) return ans.valueReference.display || ans.valueReference.reference;
+            return "Unknown answer type";
+          }).join(', ') || null
+        })) || []
+      };
+    });
+
+    return {
+      resourceType: 'QuestionnaireResponse',
+      count: responses.length,
+      total: data.total,
+      responses: responses
+    };
+  }
+
+  formatBinaryResults(data, params) {
+    if (!data?.entry?.length) {
+      return { 
+        resourceType: 'Binary',
+        message: "No binary resources (clinical notes) found matching the criteria.",
+        count: 0
+      };
+    }
+
+    const binaries = data.entry.map(entry => {
+      const binary = entry.resource;
+      
+      return {
+        id: binary.id,
+        contentType: binary.contentType || "Unknown",
+        securityContext: binary.securityContext?.display || binary.securityContext?.reference || null,
+        size: binary.data ? Math.ceil(binary.data.length * 0.75) : null, // Approximate size from base64
+        lastUpdated: binary.meta?.lastUpdated || "Unknown",
+        // Note: The actual content is base64 encoded in binary.data
+        // For clinical notes, the contentType is typically 'text/plain' or 'application/pdf'
+        hasContent: !!binary.data,
+        note: "Use the Binary resource ID to retrieve the full content"
+      };
+    });
+
+    return {
+      resourceType: 'Binary',
+      count: binaries.length,
+      total: data.total,
+      binaries: binaries,
+      note: "Binary resources contain clinical notes and documents. The actual content needs to be decoded from base64."
+    };
+  }
+
+  formatMedicationResults(data, params) {
+    const medications = data.entry.map(entry => {
+      const med = entry.resource;
+      
+      return {
+        id: med.id,
+        identifier: med.identifier?.map(id => 
+          `${id.system || 'Unknown'}/${id.value || 'Unknown'}`
+        ).join(', ') || null,
+        code: med.code?.text || med.code?.coding?.[0]?.display || "Unknown",
+        status: med.status || null,
+        manufacturer: med.manufacturer?.display || med.manufacturer?.reference || null,
+        form: med.form?.text || med.form?.coding?.[0]?.display || null,
+        amount: med.amount ? {
+          numerator: med.amount.numerator ? 
+            `${med.amount.numerator.value} ${med.amount.numerator.unit || ''}` : null,
+          denominator: med.amount.denominator ? 
+            `${med.amount.denominator.value} ${med.amount.denominator.unit || ''}` : null
+        } : null,
+        ingredient: med.ingredient?.map(ing => ({
+          item: ing.itemCodeableConcept?.text || 
+                ing.itemCodeableConcept?.coding?.[0]?.display ||
+                ing.itemReference?.display || 
+                ing.itemReference?.reference || "Unknown",
+          isActive: ing.isActive || null,
+          strength: ing.strength ? {
+            numerator: ing.strength.numerator ? 
+              `${ing.strength.numerator.value} ${ing.strength.numerator.unit || ''}` : null,
+            denominator: ing.strength.denominator ? 
+              `${ing.strength.denominator.value} ${ing.strength.denominator.unit || ''}` : null
+          } : null
+        })) || [],
+        batch: med.batch ? {
+          lotNumber: med.batch.lotNumber || null,
+          expirationDate: med.batch.expirationDate || null
+        } : null
+      };
+    });
+
+    return {
+      resourceType: 'Medication',
+      count: medications.length,
+      total: data.total,
+      medications: medications
     };
   }
 }
