@@ -125,7 +125,7 @@ class EHRAssistantApp {
     this.chatManager.setupChatInterface();
     this.chatManager.setDataContext(this.dataCache);
 
-    console.log("✅ Patient resource loaded:", patientData);
+    console.log("Patient data loaded");
   } catch (err) {
     this.uiManager.displayError(`SMART init error: ${err.message}`, err);
   }
@@ -205,7 +205,7 @@ async authorizeWithEHR(launchToken, iss) {
       const patientData = await this.dataFetcher.fetchData('Patient');
       this.dataCache.patient = patientData;
       this.uiManager.displayPatientHeaderInfo(patientData, this.smartClient);
-      console.log("Patient data loaded");
+      console.log("✅ Patient resource loaded:", patientData);
     } catch (error) {
       throw new Error(`Failed to fetch patient data: ${error.message}`);
     }
