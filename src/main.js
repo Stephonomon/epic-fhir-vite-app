@@ -12,7 +12,7 @@ import { marked } from 'marked';
 
 // --- Configuration ---
 const APP_CONFIG = {
-  CLIENT_ID: clientId,
+  //CLIENT_ID: clientId,
   REDIRECT_URI: window.location.origin + window.location.pathname,
   BACKEND_PROXY_URL: 'https://snp-vite-backend.onrender.com/api/fhir-proxy',
   OPENAI_API_KEY: import.meta.env.VITE_OPENAI_API_KEY,
@@ -138,18 +138,19 @@ async authorizeWithEHR(launchToken, iss) {
     return;
   }
 
-  // Extract client_id from the launch token
-  let clientId = APP_CONFIG.CLIENT_ID; // default fallback
+  let clientId = APP_CONFIG.CLIENT_ID; // ✅ Declare it properly here
+
+  // Try to decode launch token to extract dynamic client_id
   try {
     const payload = JSON.parse(atob(launchToken.split('.')[1]));
     if (payload.client_id) {
       clientId = payload.client_id;
-      console.log('Dynamically extracted client_id from JWT:', clientId);
+      console.log('✅ Extracted client_id from launch token:', clientId);
     } else {
-      console.warn('No client_id found in launch token');
+      console.warn('⚠️ client_id not found in launch token payload');
     }
   } catch (err) {
-    console.warn('Failed to decode launch token:', err);
+    console.error('❌ Failed to decode launch token:', err);
   }
 
   this.uiManager.showLoading(true);
@@ -166,6 +167,7 @@ async authorizeWithEHR(launchToken, iss) {
     this.uiManager.displayError(`Auth error: ${err.message}`, err);
   }
 }
+
 
 
   buildAuthScope() {
