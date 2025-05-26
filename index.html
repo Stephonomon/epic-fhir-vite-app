@@ -19,7 +19,7 @@
                 </h1>
             </div>
             
-            <!-- Patient Info Section (like user info) -->
+            <!-- Patient Info Section -->
             <div class="patient-header-info">
                 <div id="patient-summary-header" class="patient-summary-compact">
                     <div class="patient-name">Loading Patient...</div>
@@ -32,79 +32,11 @@
             </div>
 
             <div class="header-right">
-                <div class="context-indicators">
-                    <span id="patient-indicator" class="context-indicator enabled" title="Patient Demographics">👤</span>
-                    <span id="vitals-indicator" class="context-indicator enabled" title="Vital Signs">📋</span>
-                    <span id="meds-indicator" class="context-indicator enabled" title="Medications">💊</span>
-                    <span id="encounters-indicator" class="context-indicator enabled" title="Encounters">🏥</span>
-                    <span id="conditions-indicator" class="context-indicator enabled" title="Conditions">🩺</span>
-                    <span id="enhanced-indicator" class="context-indicator enabled" title="Enhanced AI Mode">🤖</span>
-                </div>
                 <button id="data-inspector-toggle" class="inspector-toggle" title="Show data inspector">
                     <span class="icon">🔍</span>
                 </button>
-                <button id="settings-toggle" class="settings-btn" title="Settings">⚙️</button>
             </div>
         </header>
-
-        <!-- Settings Panel (Dropdown) -->
-        <div id="settings-panel" class="settings-dropdown" style="display: none;">
-            <div class="settings-content">
-                <h3>Data Sources</h3>
-                <p class="settings-description">Control what data the AI assistant can access</p>
-                
-                <div class="settings-grid">
-                    <div class="setting-item">
-                        <input type="checkbox" id="toggle-patient" checked>
-                        <label for="toggle-patient">
-                            <span class="icon">👤</span>
-                            Patient Demographics
-                        </label>
-                    </div>
-                    
-                    <div class="setting-item">
-                        <input type="checkbox" id="toggle-vitals" checked>
-                        <label for="toggle-vitals">
-                            <span class="icon">📋</span>
-                            Vital Signs & Labs
-                        </label>
-                    </div>
-                    
-                    <div class="setting-item">
-                        <input type="checkbox" id="toggle-meds" checked>
-                        <label for="toggle-meds">
-                            <span class="icon">💊</span>
-                            Medications
-                        </label>
-                    </div>
-                    
-                    <div class="setting-item">
-                        <input type="checkbox" id="toggle-encounters" checked>
-                        <label for="toggle-encounters">
-                            <span class="icon">🏥</span>
-                            Encounters & Visits
-                        </label>
-                    </div>
-                    
-                    <div class="setting-item">
-                        <input type="checkbox" id="toggle-conditions" checked>
-                        <label for="toggle-conditions">
-                            <span class="icon">🩺</span>
-                            Conditions & Problems
-                        </label>
-                    </div>
-                    
-                    <div class="setting-item">
-                        <input type="checkbox" id="toggle-enhanced" checked>
-                        <label for="toggle-enhanced">
-                            <span class="icon">🤖</span>
-                            Enhanced AI Mode
-                        </label>
-                        <small>Enable dynamic FHIR querying with function calling</small>
-                    </div>
-                </div>
-            </div>
-        </div>
 
         <!-- Main Layout Container -->
         <div class="main-layout">
@@ -187,24 +119,34 @@
                     </div>
                     
                     <!-- Search History -->
-                    <div class="search-history-section">
-                        <h4>Recent Searches</h4>
-                        <div id="search-history" class="search-history">
-                            <div class="no-searches">No searches yet. Ask the AI a question to see FHIR queries here.</div>
+                    <div class="inspector-section">
+                        <div class="section-header collapsible" data-section="search-history">
+                            <h4>Recent Searches</h4>
+                            <span class="collapse-icon">▼</span>
+                        </div>
+                        <div id="search-history-content" class="section-content collapsed">
+                            <div id="search-history" class="search-history">
+                                <div class="no-searches">No searches yet. Ask the AI a question to see FHIR queries here.</div>
+                            </div>
                         </div>
                     </div>
                     
                     <!-- Raw Data Viewer -->
-                    <div class="raw-data-section">
-                        <h4>Raw FHIR Data</h4>
-                        <div class="data-viewer-controls">
-                            <select id="data-viewer-select">
-                                <option value="">Select a search result to view</option>
-                            </select>
-                            <button id="copy-raw-data" class="copy-btn" title="Copy raw data">📋</button>
+                    <div class="inspector-section">
+                        <div class="section-header collapsible" data-section="raw-data">
+                            <h4>Raw FHIR Data</h4>
+                            <span class="collapse-icon">▼</span>
                         </div>
-                        <div id="raw-data-viewer" class="raw-data-viewer">
-                            <div class="no-data">Select a search result above to view raw FHIR data</div>
+                        <div id="raw-data-content" class="section-content collapsed">
+                            <div class="data-viewer-controls">
+                                <select id="data-viewer-select">
+                                    <option value="">Select a search result to view</option>
+                                </select>
+                                <button id="copy-raw-data" class="copy-btn" title="Copy raw data">📋</button>
+                            </div>
+                            <div id="raw-data-viewer" class="raw-data-viewer">
+                                <div class="no-data">Select a search result above to view raw FHIR data</div>
+                            </div>
                         </div>
                     </div>
                 </div>
