@@ -9,12 +9,10 @@ import { ConfigManager } from './configManager.js';
 import { marked } from 'marked';
 
 
-const params = new URLSearchParams(window.location.search);
-const dynamicClientId = params.get('client_id');
 
 // --- Configuration ---
 const APP_CONFIG = {
-  CLIENT_ID: dynamicClientId,
+  CLIENT_ID: clientId,
   REDIRECT_URI: window.location.origin + window.location.pathname,
   BACKEND_PROXY_URL: 'https://snp-vite-backend.onrender.com/api/fhir-proxy',
   OPENAI_API_KEY: import.meta.env.VITE_OPENAI_API_KEY,
