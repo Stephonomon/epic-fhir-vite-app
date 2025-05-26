@@ -125,7 +125,7 @@ class EHRAssistantApp {
     this.chatManager.setupChatInterface();
     this.chatManager.setDataContext(this.dataCache);
 
-    console.log("✅ All patient data loaded successfully");
+    console.log("✅ Patient resource loaded:", patientData);
   } catch (err) {
     this.uiManager.displayError(`SMART init error: ${err.message}`, err);
   }
@@ -216,6 +216,10 @@ async authorizeWithEHR(launchToken, iss) {
       if (success) {
         this.dataCache[type.toLowerCase()] = data;
         console.log(`${type} data loaded:`, data?.entry?.length || 0, "entries");
+
+        if (data?.entry?.length > 0) {
+        console.log(`📄 First ${type} resource:`, data.entry[0].resource);
+}
       } else {
         console.error(`Failed to load ${type}:`, error);
         this.dataCache[type.toLowerCase()] = { entry: [] };

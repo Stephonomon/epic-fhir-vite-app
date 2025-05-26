@@ -147,7 +147,7 @@ export class UIManager {
       this.dom.patientAgeGenderEl.textContent = `${this.calculateAge(patientInfo.birthDate)} / ${patientInfo.gender}`;
     }
     if (this.dom.patientMrnEl) {
-      this.dom.patientMrnEl.textContent = `PAT ID: ${patientInfo.patId}`;
+      this.dom.patientMrnEl.textContent = `MRN: ${patientInfo.patId}`;
     }
     if (this.dom.patientCsnEl) {
       this.dom.patientCsnEl.textContent = `CSN: ${patientInfo.csn}`;
@@ -172,7 +172,7 @@ export class UIManager {
       <div class="welcome-message">
         <div class="welcome-header">
           <span class="icon">🤖</span>
-          <h3>Welcome to EHR Assistant</h3>
+          <h3>Welcome to CAia</h3>
         </div>
         <p>I can help you analyze patient data, answer questions about medications, vitals, conditions, and more. Ask me anything about this patient!</p>
         <div class="quick-start">
