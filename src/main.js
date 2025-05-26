@@ -75,33 +75,60 @@ class EHRAssistantApp {
   }
 
   async initializeWithSMARTClient() {
+  function decodeJWT(token) {
     try {
-      const client = await FHIR.oauth2.ready();
-      this.smartClient = client;
-      window.smartClient = client; // For debugging
-
-      // Initialize services
-      this.dataFetcher = new DataFetcherService(client, APP_CONFIG.BACKEND_PROXY_URL);
-      
-      // Always use enhanced chat mode
-      if (APP_CONFIG.OPENAI_API_KEY) {
-        this.enhancedChat = new EnhancedFHIRChat(APP_CONFIG.OPENAI_API_KEY, client, APP_CONFIG.BACKEND_PROXY_URL);
-        this.chatManager.setEnhancedChat(this.enhancedChat);
-        console.log('Enhanced FHIR chat initialized');
-      }
-
-      // Load initial data
-      await this.loadInitialData();
-
-      // Setup chat interface
-      this.chatManager.setupChatInterface();
-      this.chatManager.setDataContext(this.dataCache);
-
-      console.log("All patient data loaded successfully");
+      const payload = token.split('.')[1];
+      const decoded = atob(payload);
+      return JSON.parse(decoded);
     } catch (err) {
-      this.uiManager.displayError(`SMART init error: ${err.message}`, err);
+      console.warn('JWT decode error:', err);
+      return null;
     }
   }
+
+  try {
+    const client = await FHIR.oauth2.ready();
+    this.smartClient = client;
+    window.smartClient = client; // For debugging
+
+    // --- Enhanced OAuth Debug Logging ---
+    const tokenResponse = client.state.tokenResponse || {};
+    const accessToken = tokenResponse.access_token || '';
+
+    console.log('✅ SMART OAuth Scopes Granted:', tokenResponse.scope || '[none]');
+    console.log('🧠 Context Information:', {
+      patient: client.getPatientId(),
+      user: client.getUserId()
+    });
+
+    const decoded = decodeJWT(accessToken);
+    if (decoded) {
+      console.log('🔍 Decoded Access Token Payload:', decoded);
+    } else {
+      console.log('⚠️ Token is not a decodable JWT or malformed.');
+    }
+
+    console.log('📦 Full SMART Client State:', client.state);
+
+    // --- Initialize Services ---
+    this.dataFetcher = new DataFetcherService(client, APP_CONFIG.BACKEND_PROXY_URL);
+
+    if (APP_CONFIG.OPENAI_API_KEY) {
+      this.enhancedChat = new EnhancedFHIRChat(APP_CONFIG.OPENAI_API_KEY, client, APP_CONFIG.BACKEND_PROXY_URL);
+      this.chatManager.setEnhancedChat(this.enhancedChat);
+      console.log('🧠 Enhanced FHIR chat initialized');
+    }
+
+    await this.loadInitialData();
+    this.chatManager.setupChatInterface();
+    this.chatManager.setDataContext(this.dataCache);
+
+    console.log("✅ All patient data loaded successfully");
+  } catch (err) {
+    this.uiManager.displayError(`SMART init error: ${err.message}`, err);
+  }
+}
+
 
   async authorizeWithEHR(launchToken, iss) {
     if (!this.isAbsoluteUrl(iss)) {
