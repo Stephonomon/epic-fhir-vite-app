@@ -134,26 +134,41 @@ class EHRAssistantApp {
 }
 
 
-  async authorizeWithEHR(launchToken, iss) {
-    if (!this.isAbsoluteUrl(iss)) {
-      this.uiManager.displayError(`Invalid 'iss' parameter: ${iss}`);
-      return;
-    }
-
-    this.uiManager.showLoading(true);
-    
-    try {
-      await FHIR.oauth2.authorize({
-        client_id: APP_CONFIG.CLIENT_ID,
-        scope: this.buildAuthScope(),
-        redirect_uri: APP_CONFIG.REDIRECT_URI,
-        iss,
-        launch: launchToken,
-      });
-    } catch (err) {
-      this.uiManager.displayError(`Auth error: ${err.message}`, err);
-    }
+async authorizeWithEHR(launchToken, iss) {
+  if (!this.isAbsoluteUrl(iss)) {
+    this.uiManager.displayError(`Invalid 'iss' parameter: ${iss}`);
+    return;
   }
+
+  // Extract client_id from the launch token
+  let clientId = APP_CONFIG.CLIENT_ID; // default fallback
+  try {
+    const payload = JSON.parse(atob(launchToken.split('.')[1]));
+    if (payload.client_id) {
+      clientId = payload.client_id;
+      console.log('Dynamically extracted client_id from JWT:', clientId);
+    } else {
+      console.warn('No client_id found in launch token');
+    }
+  } catch (err) {
+    console.warn('Failed to decode launch token:', err);
+  }
+
+  this.uiManager.showLoading(true);
+
+  try {
+    await FHIR.oauth2.authorize({
+      client_id: clientId,
+      scope: this.buildAuthScope(),
+      redirect_uri: APP_CONFIG.REDIRECT_URI,
+      iss,
+      launch: launchToken,
+    });
+  } catch (err) {
+    this.uiManager.displayError(`Auth error: ${err.message}`, err);
+  }
+}
+
 
   buildAuthScope() {
     // Use wildcard scopes like the original code
