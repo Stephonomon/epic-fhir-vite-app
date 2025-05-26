@@ -83,7 +83,8 @@ class EHRAssistantApp {
       // Initialize services
       this.dataFetcher = new DataFetcherService(client, APP_CONFIG.BACKEND_PROXY_URL);
       
-      if (this.configManager.getConfig().useEnhancedChat && APP_CONFIG.OPENAI_API_KEY) {
+      // Always use enhanced chat mode
+      if (APP_CONFIG.OPENAI_API_KEY) {
         this.enhancedChat = new EnhancedFHIRChat(APP_CONFIG.OPENAI_API_KEY, client, APP_CONFIG.BACKEND_PROXY_URL);
         this.chatManager.setEnhancedChat(this.enhancedChat);
         console.log('Enhanced FHIR chat initialized');
@@ -130,30 +131,28 @@ class EHRAssistantApp {
            'context-user_timestamp context-workstation_id context-csn context-pat_id';
   }
 
-// in EHRAssistantApp.loadInitialData (src/main.js)
-async loadInitialData() {
-  this.uiManager.showLoading(true);
-  try {
-    // 1) Always fetch demographics
-    await this.loadPatientData();
+  async loadInitialData() {
+    this.uiManager.showLoading(true);
+    try {
+      // 1) Always fetch demographics
+      await this.loadPatientData();
 
-    // 2) Only fetch the single most-recent encounter
-    const encounterBundle = await this.dataFetcher.fetchData('Encounters', {
-      count: 1,
-      useCache: true
-    });
-    this.processBatchResults([
-      { type: 'Encounters', data: encounterBundle, success: true }
-    ]);
+      // 2) Only fetch the single most-recent encounter
+      const encounterBundle = await this.dataFetcher.fetchData('Encounters', {
+        count: 1,
+        useCache: true
+      });
+      this.processBatchResults([
+        { type: 'Encounters', data: encounterBundle, success: true }
+      ]);
 
-    // 3) Defer everything else until the user navigates or asks
-  } catch (err) {
-    this.uiManager.displayError(`Failed to load initial data: ${err.message}`, err);
-  } finally {
-    this.uiManager.showLoading(false);
+      // 3) Defer everything else until the user navigates or asks
+    } catch (err) {
+      this.uiManager.displayError(`Failed to load initial data: ${err.message}`, err);
+    } finally {
+      this.uiManager.showLoading(false);
+    }
   }
-}
-
 
   async loadPatientData() {
     try {
@@ -179,20 +178,8 @@ async loadInitialData() {
   }
 
   setupEventListeners() {
-    // Settings and UI toggles
+    // UI toggles
     this.uiManager.setupUIListeners();
-
-    // Context configuration changes
-    this.configManager.on('configChange', (newConfig) => {
-      this.uiManager.updateContextIndicators(newConfig);
-      this.chatManager.updateConfig(newConfig);
-      
-      // Reinitialize enhanced chat if toggled
-      if (newConfig.useEnhancedChat && !this.enhancedChat && this.smartClient && APP_CONFIG.OPENAI_API_KEY) {
-        this.enhancedChat = new EnhancedFHIRChat(APP_CONFIG.OPENAI_API_KEY, this.smartClient, APP_CONFIG.BACKEND_PROXY_URL);
-        this.chatManager.setEnhancedChat(this.enhancedChat);
-      }
-    });
 
     // Chat interface events
     this.chatManager.on('searchPerformed', (searchData) => {
@@ -253,10 +240,10 @@ async loadInitialData() {
   }
 }
 
-
-  
-  // Initialize the app
+// Initialize the app when the document is loaded
+document.addEventListener('DOMContentLoaded', () => {
   const app = new EHRAssistantApp();
   app.init().catch(err => {
     console.error('Failed to initialize app:', err);
   });
+});
