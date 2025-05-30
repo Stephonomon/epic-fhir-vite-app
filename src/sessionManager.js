@@ -1,31 +1,39 @@
 // src/sessionManager.js
-// Enhanced session manager for Epic workspace embedded apps
+// Session manager aligned with Epic's documentation for embedded workspace support
 
 export class SessionManager {
   constructor() {
-    // In embedded workspace, we need to rely more on context clues than URL
-    this.instanceKey = this.determineInstanceKey();
-    console.log('SessionManager initialized with key:', this.instanceKey);
+    // Get instance key from OAuth state parameter or generate one
+    this.instanceKey = this.getInstanceKeyFromOAuthState() || this.generateInstanceKey();
+    console.log('SessionManager initialized with instance key:', this.instanceKey);
+    
+    // Store instance key for navigation across pages
+    this.persistInstanceKey();
   }
 
-  determineInstanceKey() {
-    // Priority order for determining instance key:
-    
-    // 1. Try to get from URL (works for external browser)
+  getInstanceKeyFromOAuthState() {
+    // Priority 1: Check URL for OAuth state parameter (post-auth redirect)
     const urlParams = new URLSearchParams(window.location.search);
-    const urlInstanceKey = urlParams.get('instanceKey');
-    if (urlInstanceKey) {
-      console.log('Using instance key from URL:', urlInstanceKey);
-      return urlInstanceKey;
+    const stateParam = urlParams.get('state');
+    if (stateParam) {
+      console.log('Found OAuth state parameter in URL:', stateParam);
+      return stateParam;
     }
 
-    // 2. Try to get from OAuth state parameter (stored during auth)
+    // Priority 2: Check if we stored the state during authorization
+    const storedState = sessionStorage.getItem('oauth_state');
+    if (storedState) {
+      console.log('Found stored OAuth state:', storedState);
+      return storedState;
+    }
+
+    // Priority 3: Look for state in SMART client data
     const smartKey = sessionStorage.getItem('SMART_KEY');
     if (smartKey) {
       try {
         const smartData = JSON.parse(sessionStorage.getItem(smartKey));
         if (smartData?.state) {
-          console.log('Using instance key from SMART state:', smartData.state);
+          console.log('Found state in SMART data:', smartData.state);
           return smartData.state;
         }
       } catch (e) {
@@ -33,129 +41,61 @@ export class SessionManager {
       }
     }
 
-    // 3. Try to detect from Epic context tokens
-    // In embedded mode, Epic may provide context through different means
-    const tokenResponse = this.getTokenResponseFromStorage();
-    if (tokenResponse) {
-      // Use combination of patient ID and CSN for embedded context
-      if (tokenResponse.pat_id && tokenResponse.csn) {
-        const contextKey = `ctx_${tokenResponse.pat_id}_${tokenResponse.csn}`;
-        console.log('Using context-based instance key:', contextKey);
-        return contextKey;
-      }
+    // Priority 4: Check if we have it in the URL as instanceKey (for cross-page navigation)
+    const instanceKey = urlParams.get('instanceKey');
+    if (instanceKey) {
+      console.log('Found instanceKey in URL:', instanceKey);
+      return instanceKey;
     }
 
-    // 4. Check if we're in an iframe (embedded mode)
-    if (window.self !== window.top) {
-      console.log('Detected iframe context, generating frame-specific key');
-      // In embedded mode, generate key based on current timestamp and random
-      // This ensures each embedded instance gets a unique key
-      return `embed_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    }
-
-    // 5. Fallback: generate new instance key
-    const newKey = `inst_${crypto.randomUUID()}`;
-    console.log('Generated new instance key:', newKey);
-    return newKey;
-  }
-
-  getTokenResponseFromStorage() {
-    // Look through sessionStorage for token response data
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const key = sessionStorage.key(i);
-      if (key && key.includes('fhirclient')) {
-        try {
-          const data = JSON.parse(sessionStorage.getItem(key));
-          if (data?.tokenResponse) {
-            return data.tokenResponse;
-          }
-        } catch (e) {
-          // Continue searching
-        }
-      }
-    }
     return null;
   }
 
-  // Enhanced method to store SMART state with better embedded support
-  storeSMARTState(smartKey, smartData) {
-    // Store the SMART key globally as it's needed for oauth2.ready()
-    sessionStorage.setItem('SMART_KEY', smartKey);
-    
-    // Extract context information for embedded mode
-    if (smartData?.tokenResponse) {
-      const { pat_id, csn, encounter } = smartData.tokenResponse;
-      
-      // If we have patient context, update our instance key to be context-based
-      if (pat_id && csn && this.instanceKey.startsWith('embed_')) {
-        const oldKey = this.instanceKey;
-        this.instanceKey = `ctx_${pat_id}_${csn}`;
-        console.log('Updated instance key from embed to context:', this.instanceKey);
-        
-        // Migrate any data from old key to new key
-        this.migrateInstanceData(oldKey, this.instanceKey);
-      }
-      
-      // Store context markers
-      this.setItem('context_pat_id', pat_id);
-      this.setItem('context_csn', csn);
-      this.setItem('context_encounter', encounter);
-    }
-    
-    // Store the instance-specific SMART data
-    this.setItem('SMART_DATA', smartData);
-    
-    // Also store under the original key for compatibility
-    sessionStorage.setItem(smartKey, JSON.stringify(smartData));
+  generateInstanceKey() {
+    // Generate UUID as Epic recommends
+    return crypto.randomUUID();
   }
 
-  migrateInstanceData(oldKey, newKey) {
-    console.log('Migrating data from', oldKey, 'to', newKey);
-    const keysToMigrate = [];
+  persistInstanceKey() {
+    // Store for cross-page navigation
+    sessionStorage.setItem('oauth_state', this.instanceKey);
     
-    // Find all keys with old instance prefix
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const key = sessionStorage.key(i);
-      if (key && key.startsWith(oldKey + '_')) {
-        keysToMigrate.push(key);
-      }
-    }
-    
-    // Migrate each key
-    keysToMigrate.forEach(oldFullKey => {
-      const value = sessionStorage.getItem(oldFullKey);
-      const keyPart = oldFullKey.substring(oldKey.length + 1);
-      const newFullKey = `${newKey}_${keyPart}`;
-      sessionStorage.setItem(newFullKey, value);
-      sessionStorage.removeItem(oldFullKey);
-    });
-    
-    console.log(`Migrated ${keysToMigrate.length} keys`);
+    // Ensure it's in the URL for page navigation
+    this.ensureInstanceKeyInUrl();
   }
 
-  // Prefix any key with the instance key to ensure isolation
+  ensureInstanceKeyInUrl() {
+    const url = new URL(window.location);
+    if (!url.searchParams.has('instanceKey') && !url.searchParams.has('state')) {
+      url.searchParams.set('instanceKey', this.instanceKey);
+      window.history.replaceState({}, '', url);
+    }
+  }
+
+  // Prefix any key with the instance key as Epic recommends
   prefixKey(key) {
     return `${this.instanceKey}_${key}`;
   }
 
-  // Wrapper methods for sessionStorage
+  // Wrapper methods for sessionStorage following Epic's pattern
   setItem(key, value) {
     const prefixedKey = this.prefixKey(key);
-    sessionStorage.setItem(prefixedKey, typeof value === 'object' ? JSON.stringify(value) : value);
+    const stringValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+    sessionStorage.setItem(prefixedKey, stringValue);
   }
 
   getItem(key) {
     const prefixedKey = this.prefixKey(key);
     const value = sessionStorage.getItem(prefixedKey);
     
-    if (value) {
-      try {
-        return JSON.parse(value);
-      } catch {
-        return value;
-      }
+    if (value === null) return null;
+    
+    // Try to parse as JSON, fallback to string
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
     }
-    return null;
   }
 
   removeItem(key) {
@@ -173,76 +113,41 @@ export class SessionManager {
       }
     }
     keysToRemove.forEach(key => sessionStorage.removeItem(key));
+    console.log(`Cleared ${keysToRemove.length} keys for instance ${this.instanceKey}`);
   }
 
-  // Check if this is a new instance
-  isNewInstance() {
-    return !this.getItem('initialized');
+  // Store patient name following Epic's example
+  setPatientName(patientName) {
+    // Exactly as Epic shows in their example
+    sessionStorage.setItem(`${this.instanceKey}_patientName`, patientName);
   }
 
-  // Mark instance as initialized
-  markInitialized() {
-    this.setItem('initialized', true);
-    this.setItem('initialized_at', new Date().toISOString());
+  getPatientName() {
+    // Exactly as Epic shows in their example
+    return sessionStorage.getItem(`${this.instanceKey}_patientName`);
   }
 
-  // Store patient context for this instance
-  storePatientContext(patientData, contextData = {}) {
-    this.setItem('patient_id', patientData.id);
-    this.setItem('patient_name', patientData.name);
-    this.setItem('patient_data', patientData);
+  // Store SMART state with instance isolation
+  storeSMARTState(smartKey, smartData) {
+    // Store the SMART key globally (needed for oauth2.ready())
+    sessionStorage.setItem('SMART_KEY', smartKey);
     
-    if (contextData.encounterId) {
-      this.setItem('encounter_id', contextData.encounterId);
+    // Store instance-specific SMART data
+    this.setItem('SMART_DATA', smartData);
+    
+    // Also store under original key for SMART client compatibility
+    sessionStorage.setItem(smartKey, JSON.stringify(smartData));
+    
+    // Extract and store launch parameters
+    if (smartData?.tokenResponse) {
+      this.setItem('launch_params', {
+        patient: smartData.tokenResponse.patient,
+        pat_id: smartData.tokenResponse.pat_id,
+        csn: smartData.tokenResponse.csn,
+        encounter: smartData.tokenResponse.encounter,
+        user: smartData.tokenResponse.user
+      });
     }
-    
-    if (contextData.csn) {
-      this.setItem('csn', contextData.csn);
-    }
-    
-    if (contextData.patId) {
-      this.setItem('pat_id', contextData.patId);
-    }
-    
-    this.setItem('context_data', contextData);
-    this.setItem('last_updated', new Date().toISOString());
-  }
-
-  // Get patient context for this instance
-  getPatientContext() {
-    return {
-      patientId: this.getItem('patient_id'),
-      patientName: this.getItem('patient_name'),
-      patientData: this.getItem('patient_data'),
-      encounterId: this.getItem('encounter_id'),
-      csn: this.getItem('csn'),
-      patId: this.getItem('pat_id'),
-      contextData: this.getItem('context_data'),
-      lastUpdated: this.getItem('last_updated')
-    };
-  }
-
-  // Enhanced validation for patient context
-  hasValidPatientContext() {
-    const context = this.getPatientContext();
-    
-    // For embedded mode, also check if context is stale
-    if (context.patientId && context.patientData) {
-      // Check if we're in embedded mode and context might have changed
-      if (window.self !== window.top) {
-        const currentTokenResponse = this.getTokenResponseFromStorage();
-        if (currentTokenResponse) {
-          // Verify context still matches
-          if (currentTokenResponse.pat_id && context.patId !== currentTokenResponse.pat_id) {
-            console.warn('Patient context mismatch detected, clearing instance');
-            this.clearInstance();
-            return false;
-          }
-        }
-      }
-      return true;
-    }
-    return false;
   }
 
   // Get SMART state for this instance
@@ -250,11 +155,13 @@ export class SessionManager {
     const smartKey = sessionStorage.getItem('SMART_KEY');
     if (!smartKey) return null;
 
-    // First try to get instance-specific data
+    // Try instance-specific data first
     const instanceData = this.getItem('SMART_DATA');
-    if (instanceData) return { key: smartKey, data: instanceData };
+    if (instanceData) {
+      return { key: smartKey, data: instanceData };
+    }
 
-    // Fallback to global data if available
+    // Fallback to global data
     try {
       const globalData = JSON.parse(sessionStorage.getItem(smartKey));
       return { key: smartKey, data: globalData };
@@ -263,24 +170,73 @@ export class SessionManager {
     }
   }
 
-  // Store chat history for this instance
-  storeChatHistory(chatHistory) {
-    this.setItem('chat_history', chatHistory);
-    this.setItem('chat_history_updated', new Date().toISOString());
+  // Store patient context
+  storePatientContext(patientData, tokenResponse = {}) {
+    // Store patient name as Epic shows
+    this.setPatientName(patientData.name);
+    
+    // Store other patient data
+    this.setItem('patient_id', patientData.id);
+    this.setItem('patient_data', patientData);
+    
+    // Store Epic-specific IDs
+    if (tokenResponse.pat_id) {
+      this.setItem('pat_id', tokenResponse.pat_id);
+    }
+    if (tokenResponse.csn) {
+      this.setItem('csn', tokenResponse.csn);
+    }
+    if (tokenResponse.encounter) {
+      this.setItem('encounter_id', tokenResponse.encounter);
+    }
+    
+    this.setItem('context_stored_at', new Date().toISOString());
   }
 
-  // Get chat history for this instance
+  // Get patient context
+  getPatientContext() {
+    return {
+      patientName: this.getPatientName(),
+      patientId: this.getItem('patient_id'),
+      patientData: this.getItem('patient_data'),
+      patId: this.getItem('pat_id'),
+      csn: this.getItem('csn'),
+      encounterId: this.getItem('encounter_id'),
+      contextStoredAt: this.getItem('context_stored_at')
+    };
+  }
+
+  // Check if we have valid patient context
+  hasValidPatientContext() {
+    const context = this.getPatientContext();
+    return !!(context.patientName && context.patientId);
+  }
+
+  // Mark instance as initialized
+  markInitialized() {
+    this.setItem('initialized', true);
+    this.setItem('initialized_at', new Date().toISOString());
+  }
+
+  // Check if this is a new instance
+  isNewInstance() {
+    return !this.getItem('initialized');
+  }
+
+  // Store and retrieve chat history
+  storeChatHistory(chatHistory) {
+    this.setItem('chat_history', chatHistory);
+  }
+
   getChatHistory() {
     return this.getItem('chat_history') || [];
   }
 
-  // Store data cache for this instance
+  // Store and retrieve data cache
   storeDataCache(dataCache) {
     this.setItem('data_cache', dataCache);
-    this.setItem('data_cache_updated', new Date().toISOString());
   }
 
-  // Get data cache for this instance
   getDataCache() {
     return this.getItem('data_cache') || {};
   }
@@ -291,80 +247,64 @@ export class SessionManager {
       instanceKey: this.instanceKey,
       initialized: this.getItem('initialized') || false,
       initializedAt: this.getItem('initialized_at'),
+      patientName: this.getPatientName(),
       patientId: this.getItem('patient_id'),
-      patientName: this.getItem('patient_name'),
-      encounterContext: this.getItem('encounter_context'),
-      csn: this.getItem('csn'),
       patId: this.getItem('pat_id'),
-      lastUpdated: this.getItem('last_updated'),
+      csn: this.getItem('csn'),
       isEmbedded: window.self !== window.top
     };
   }
 
-  // Utility to detect and handle context changes in embedded mode
-  detectContextChange() {
-    if (window.self !== window.top) {
-      const currentTokenResponse = this.getTokenResponseFromStorage();
-      if (currentTokenResponse) {
-        const storedPatId = this.getItem('pat_id');
-        const storedCsn = this.getItem('csn');
-        
-        if (currentTokenResponse.pat_id !== storedPatId || 
-            currentTokenResponse.csn !== storedCsn) {
-          console.log('Context change detected in embedded mode');
-          return {
-            changed: true,
-            oldContext: { patId: storedPatId, csn: storedCsn },
-            newContext: { patId: currentTokenResponse.pat_id, csn: currentTokenResponse.csn }
-          };
-        }
-      }
-    }
-    return { changed: false };
+  // Helper to check if we're dealing with the same patient
+  isSamePatient(patId, csn) {
+    const currentPatId = this.getItem('pat_id');
+    const currentCsn = this.getItem('csn');
+    
+    return currentPatId === patId && currentCsn === csn;
   }
 
-  // Clean up stale instances
-  cleanupStaleInstances(maxAgeHours = 24) {
+  // Clean up old instances (more conservative approach)
+  cleanupOldInstances(maxAgeHours = 24) {
     const now = new Date();
     const keysToRemove = [];
-    const contextKeys = new Set();
+    const instancesFound = new Set();
 
-    // First pass: identify all context-based keys and their age
+    // Find all instance keys
     for (let i = 0; i < sessionStorage.length; i++) {
       const key = sessionStorage.key(i);
-      if (key && key.includes('_last_updated')) {
-        const instanceKey = key.split('_last_updated')[0];
-        const lastUpdated = sessionStorage.getItem(key);
-        
-        if (lastUpdated) {
-          const age = now - new Date(lastUpdated);
-          const ageInHours = age / (1000 * 60 * 60);
-          
-          // For context-based keys, be more aggressive with cleanup
-          if (instanceKey.startsWith('ctx_') && ageInHours > 1) {
-            contextKeys.add(instanceKey);
-          } else if (ageInHours > maxAgeHours) {
-            contextKeys.add(instanceKey);
-          }
-        }
+      if (key && key.includes('_initialized_at')) {
+        const instanceKey = key.replace('_initialized_at', '');
+        instancesFound.add(instanceKey);
       }
     }
 
-    // Second pass: collect all keys for removal
-    contextKeys.forEach(instanceKey => {
-      for (let j = 0; j < sessionStorage.length; j++) {
-        const key = sessionStorage.key(j);
-        if (key && key.startsWith(instanceKey + '_')) {
-          keysToRemove.push(key);
+    // Check age of each instance
+    instancesFound.forEach(instanceKey => {
+      // Don't clean up current instance
+      if (instanceKey === this.instanceKey) return;
+      
+      const initializedAt = sessionStorage.getItem(`${instanceKey}_initialized_at`);
+      if (initializedAt) {
+        const age = now - new Date(initializedAt);
+        const ageInHours = age / (1000 * 60 * 60);
+        
+        if (ageInHours > maxAgeHours) {
+          // Collect all keys for this old instance
+          for (let i = 0; i < sessionStorage.length; i++) {
+            const key = sessionStorage.key(i);
+            if (key && key.startsWith(instanceKey + '_')) {
+              keysToRemove.push(key);
+            }
+          }
         }
       }
     });
 
-    // Remove the keys
+    // Remove old keys
     keysToRemove.forEach(key => sessionStorage.removeItem(key));
     
     if (keysToRemove.length > 0) {
-      console.log(`Cleaned up ${keysToRemove.length} keys from ${contextKeys.size} stale instances`);
+      console.log(`Cleaned up ${keysToRemove.length} keys from old instances`);
     }
   }
 }
