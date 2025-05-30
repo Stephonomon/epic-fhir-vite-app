@@ -1,4 +1,4 @@
-// src/main.js - Updated with multi-instance SMART storage and instance isolation
+// src/main.js - Updated with multi-instance SMART storage and corrected authorizeWithEHR
 
 import './style.css';
 import FHIR from 'fhirclient';
@@ -278,7 +278,7 @@ class EHRAssistantApp {
         iss,
         launch:       launchToken,
         state:        stateParam,
-        storage       // ← pass instance-scoped storage here too
+        storage:      this.storage  // fixed: reference instance-scoped storage
       });
     } catch (err) {
       this.uiManager.displayError(`Auth error: ${err.message}`, err);
@@ -406,24 +406,3 @@ class EHRAssistantApp {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  isAbsoluteUrl(url) {
-    return typeof url === 'string' && (url.includes('://') || url.startsWith('//'));
-  }
-}
-
-// Initialize the app when the document is loaded
-document.addEventListener('DOMContentLoaded', () => {
-  const app = new EHRAssistantApp();
-  window.ehrApp = app; // For debugging
-  app.init().catch(err => {
-    console.error('Failed to initialize app:', err);
-  });
-});
