@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FHIR App Debug Utility</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1, h2 {
+            color: #333;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+        }
+        .debug-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        .debug-output {
+            background: #263238;
+            color: #aed581;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #1976D2;
+        }
+        button.danger {
+            background: #f44336;
+        }
+        button.danger:hover {
+            background: #d32f2f;
+        }
+        .status-good {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        .status-bad {
+            color: #f44336;
+            font-weight: bold;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .url-params {
+            background: #e3f2fd;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 FHIR App Debug Utility</h1>
+        <p>This utility helps diagnose OAuth and storage issues in your Epic FHIR app.</p>
+    </div>
+
+    <div class="container">
+        <h2>📍 Current State</h2>
+        <div id="current-state" class="debug-output">Loading...</div>
+    </div>
+
+    <div class="container">
+        <h2>🔑 Storage Analysis</h2>
+        <div id="storage-analysis" class="debug-output">Loading...</div>
+    </div>
+
+    <div class="container">
+        <h2>🚀 Actions</h2>
+        <div class="debug-section">
+            <button onclick="refreshDebugInfo()">🔄 Refresh Debug Info</button>
+            <button onclick="testOAuthFlow()">🧪 Test OAuth Flow</button>
+            <button onclick="forceCompleteOAuth()">⚡ Force Complete OAuth</button>
+            <button onclick="clearAllStorage()" class="danger">🗑️ Clear All Storage</button>
+            <button onclick="testBackendConnection()">🌐 Test Backend Connection</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>📊 Detailed Storage Contents</h2>
+        <div id="storage-contents" class="debug-output">Loading...</div>
+    </div>
+
+    <div class="container">
+        <h2>💡 Recommendations</h2>
+        <div id="recommendations" class="debug-section">Loading...</div>
+    </div>
+
+    <script type="module">
+        import FHIR from 'fhirclient';
+        
+        window.FHIR = FHIR;
+        
+        async function analyzeCurrentState() {
+            const state = {
+                url: window.location.href,
+                urlParams: Object.fromEntries(new URLSearchParams(window.location.search)),
+                hasInstanceManager: typeof window.getInstanceManager !== 'undefined',
+                instanceId: null,
+                smartClientExists: !!window.smartClient,
+                sessionStorageKeys: [],
+                smartContextLocations: []
+            };
+            
+            // Get instance ID if available
+            if (state.hasInstanceManager) {
+                try {
+                    const instanceManager = window.getInstanceManager();
+                    state.instanceId = instanceManager.getInstanceId();
+                } catch (e) {
+                    state.instanceId = 'Error: ' + e.message;
+                }
+            }
+            
+            // Check sessionStorage
+            for (let i = 0; i < sessionStorage.length; i++) {
+                const key = sessionStorage.key(i);
+                state.sessionStorageKeys.push(key);
+                
+                if (key.includes('SMART') || key.includes('smart')) {
+                    state.smartContextLocations.push({
+                        key: key,
+                        length: sessionStorage.getItem(key)?.length || 0,
+                        preview: sessionStorage.getItem(key)?.substring(0, 100) + '...'
+                    });
+                }
+            }
+            
+            // Check SMART client
+            if (window.smartClient) {
+                try {
+                    state.smartClient = {
+                        hasPatient: !!window.smartClient.patient,
+                        patientId: window.smartClient.patient?.id,
+                        hasToken: !!window.smartClient.state?.tokenResponse?.access_token,
+                        serverUrl: window.smartClient.state?.serverUrl,
+                        tokenExpiry: window.smartClient.state?.tokenResponse?.expires_in
+                    };
+                } catch (e) {
+                    state.smartClient = { error: e.message };
+                }
+            }
+            
+            return state;
+        }
+        
+        async function analyzeStorage() {
+            const analysis = {
+                sessionStorageSize: sessionStorage.length,
+                instances: {},
+                smartKeys: [],
+                oauthKeys: [],
+                duplicates: []
+            };
+            
+            // Analyze all keys
+            for (let i = 0; i < sessionStorage.length; i++) {
+                const key = sessionStorage.key(i);
+                const value = sessionStorage.getItem(key);
+                
+                // Check for instance-prefixed keys
+                if (key.startsWith('inst_')) {
+                    const instanceId = key.split('_').slice(0, 3).join('_');
+                    if (!analysis.instances[instanceId]) {
+                        analysis.instances[instanceId] = [];
+                    }
+                    analysis.instances[instanceId].push(key);
+                }
+                
+                // Check for SMART keys
+                if (key.includes('SMART') || key.includes('smart')) {
+                    analysis.smartKeys.push({
+                        key: key,
+                        size: value?.length || 0,
+                        hasPatientContext: value?.includes('patient') || false
+                    });
+                }
+                
+                // Check for OAuth keys
+                if (key.includes('oauth') || key.includes('auth') || key.includes('state')) {
+                    analysis.oauthKeys.push({
+                        key: key,
+                        size: value?.length || 0
+                    });
+                }
+            }
+            
+            return analysis;
+        }
+        
+        window.refreshDebugInfo = async function() {
+            try {
+                // Current state
+                const state = await analyzeCurrentState();
+                document.getElementById('current-state').textContent = JSON.stringify(state, null, 2);
+                
+                // Storage analysis
+                const analysis = await analyzeStorage();
+                document.getElementById('storage-analysis').textContent = JSON.stringify(analysis, null, 2);
+                
+                // Storage contents
+                const contents = {};
+                for (let i = 0; i < sessionStorage.length; i++) {
+                    const key = sessionStorage.key(i);
+                    const value = sessionStorage.getItem(key);
+                    contents[key] = value?.length > 200 ? value.substring(0, 200) + '...' : value;
+                }
+                document.getElementById('storage-contents').textContent = JSON.stringify(contents, null, 2);
+                
+                // Recommendations
+                generateRecommendations(state, analysis);
+                
+            } catch (error) {
+                console.error('Debug error:', error);
+                document.getElementById('current-state').textContent = 'Error: ' + error.message;
+            }
+        };
+        
+        window.testOAuthFlow = async function() {
+            try {
+                const result = {
+                    canInitialize: false,
+                    hasValidContext: false,
+                    error: null
+                };
+                
+                // Test if we can create a FHIR client
+                try {
+                    const client = await FHIR.oauth2.ready();
+                    result.canInitialize = true;
+                    result.hasValidContext = !!client.patient;
+                    result.client = {
+                        patient: client.patient?.id,
+                        user: client.user?.id,
+                        scope: client.scope
+                    };
+                } catch (e) {
+                    result.error = e.message;
+                }
+                
+                alert('OAuth Test Result:\n' + JSON.stringify(result, null, 2));
+            } catch (error) {
+                alert('OAuth test failed: ' + error.message);
+            }
+        };
+        
+        window.forceCompleteOAuth = async function() {
+            try {
+                console.log('Attempting to force complete OAuth...');
+                const client = await FHIR.oauth2.completeAuth();
+                window.smartClient = client;
+                alert('OAuth completed! Client stored in window.smartClient');
+                
+                // Refresh the page to reinitialize
+                if (window.location.search.includes('code=')) {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('code');
+                    url.searchParams.delete('state');
+                    window.location.href = url.toString();
+                }
+            } catch (error) {
+                alert('Force complete failed: ' + error.message);
+            }
+        };
+        
+        window.clearAllStorage = function() {
+            if (confirm('This will clear ALL sessionStorage. Are you sure?')) {
+                sessionStorage.clear();
+                alert('Storage cleared! Refreshing page...');
+                window.location.reload();
+            }
+        };
+        
+        window.testBackendConnection = async function() {
+            try {
+                const backendUrl = 'https://snp-vite-backend.onrender.com/api/fhir-proxy';
+                const response = await fetch(backendUrl.replace('/api/fhir-proxy', '/'));
+                const text = await response.text();
+                alert(`Backend test:\nStatus: ${response.status}\nResponse: ${text}`);
+            } catch (error) {
+                alert('Backend connection failed: ' + error.message);
+            }
+        };
+        
+        function generateRecommendations(state, analysis) {
+            const recommendations = [];
+            
+            // Check if we're in OAuth callback
+            if (state.urlParams.code && state.urlParams.state) {
+                recommendations.push('🔄 OAuth callback detected. The app should be handling authentication.');
+            }
+            
+            // Check for instance ID
+            if (!state.instanceId && !state.urlParams.instanceId) {
+                recommendations.push('⚠️ No instance ID found. This may cause issues with multiple tabs.');
+            }
+            
+            // Check for SMART context
+            if (analysis.smartKeys.length === 0) {
+                recommendations.push('❌ No SMART context found in storage. You may need to launch from Epic.');
+            } else if (analysis.smartKeys.length > 1) {
+                recommendations.push('⚠️ Multiple SMART contexts found. This might cause conflicts.');
+            }
+            
+            // Check for multiple instances
+            const instanceCount = Object.keys(analysis.instances).length;
+            if (instanceCount > 1) {
+                recommendations.push(`📋 Found ${instanceCount} different instances in storage.`);
+            }
+            
+            // Check OAuth state
+            if (state.urlParams.launch && state.urlParams.iss) {
+                recommendations.push('🚀 Launch parameters present. App should start OAuth flow.');
+            }
+            
+            const recDiv = document.getElementById('recommendations');
+            recDiv.innerHTML = recommendations.length > 0 
+                ? '<ul>' + recommendations.map(r => `<li>${r}</li>`).join('') + '</ul>'
+                : '<p class="status-good">✅ No issues detected!</p>';
+        }
+        
+        // Auto-refresh on load
+        window.addEventListener('load', () => {
+            window.refreshDebugInfo();
+        });
+    </script>
+</body>
+</html>
