@@ -217,3 +217,15 @@ npm run build
 4. **Offline Support** - Progressive web app capabilities
 5. **Multi-patient Support** - Switch between patients
 6. **Plugin System** - Extensible architecture for custom features
+
+
+
+Pushing to both gits via Command Line
+git push -u azure --all
+git remote -v
+
+## For pull requests across both
+git checkout main
+git merge development  # resolves locally
+git push github main
+git push azure main
