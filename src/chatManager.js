@@ -1,5 +1,4 @@
-// src/chatManager.js
-// Centralized chat management for the EHR Assistant
+import { sessionSet, sessionGet } from './sessionInstanceKey.js';
 
 export class ChatManager {
   constructor(uiManager, openAiKey) {
@@ -25,28 +24,22 @@ export class ChatManager {
     
     if (!chatInput || !chatSubmit) return;
     
-    // Input event listeners
     chatInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         this.handleChatSubmit();
       }
     });
-    
     chatSubmit.addEventListener('click', () => this.handleChatSubmit());
-    
-    // Auto-resize textarea
     chatInput.addEventListener('input', function() {
       this.style.height = 'auto';
       this.style.height = Math.min(this.scrollHeight, 120) + 'px';
     });
 
-    // Listen for suggested questions
     this.uiManager.on('suggestedQuestionClicked', () => {
       this.handleChatSubmit();
     });
 
-    // Set global reference for UI manager
     window.uiManager = this.uiManager;
   }
 
@@ -54,14 +47,14 @@ export class ChatManager {
     const chatInput = document.getElementById('chat-input');
     const chatSubmit = document.getElementById('chat-submit');
     const message = chatInput.value.trim();
-    
     if (!message) return;
-    
-    // Add user message
+
     this.uiManager.addChatMessage('user', message);
     this.chatHistory.push({ role: 'user', content: message, timestamp: new Date().toISOString() });
+
+    // Persist chat history for this instance
+    sessionSet('chatHistory', JSON.stringify(this.chatHistory));
     
-    // Clear input and show loading
     chatInput.value = '';
     chatInput.style.height = 'auto';
     chatSubmit.disabled = true;
@@ -69,35 +62,25 @@ export class ChatManager {
     
     try {
       let aiResp;
-      
-      // Always use enhanced chat mode
       if (this.enhancedChat) {
         console.log('Using enhanced chat mode');
-        
-        // Patch the enhanced chat to capture search data
         const originalExecuteTool = this.enhancedChat.fhirTools.executeTool.bind(this.enhancedChat.fhirTools);
         this.enhancedChat.fhirTools.executeTool = async (toolName, parameters) => {
-          // Emit search event
           this.emit('searchPerformed', {
             function: toolName,
             parameters: parameters,
             status: 'pending'
           });
-          
           try {
             const result = await originalExecuteTool(toolName, parameters);
-            
-            // Update search with results
             this.emit('searchPerformed', {
               function: toolName,
               parameters: parameters,
               status: 'completed',
               result: result
             });
-            
             return result;
           } catch (error) {
-            // Update search status on error
             this.emit('searchPerformed', {
               function: toolName,
               parameters: parameters,
@@ -107,7 +90,7 @@ export class ChatManager {
             throw error;
           }
         };
-        
+
         aiResp = await this.enhancedChat.getChatResponse(message, true);
         this.uiManager.addChatMessage('assistant', aiResp.content, aiResp.toolCalls);
         this.chatHistory.push({ 
@@ -116,8 +99,10 @@ export class ChatManager {
           toolCalls: aiResp.toolCalls,
           timestamp: new Date().toISOString() 
         });
+
+        // Persist updated chat history
+        sessionSet('chatHistory', JSON.stringify(this.chatHistory));
       } else {
-        // No enhanced chat available
         this.uiManager.addChatMessage('assistant', 'Enhanced chat mode is not available. Please ensure the OpenAI API key is configured.');
       }
       
@@ -150,6 +135,8 @@ export class ChatManager {
     if (this.enhancedChat) {
       this.enhancedChat.clearConversation();
     }
+    // Clear chat history for this instance
+    sessionSet('chatHistory', JSON.stringify([]));
   }
 
   exportChatHistory() {
@@ -158,5 +145,19 @@ export class ChatManager {
       chatHistory: this.chatHistory,
       timestamp: new Date().toISOString()
     };
+  }
+
+  // Restore chat history from sessionStorage (for this instance)
+  restoreChatHistory() {
+    const history = sessionGet('chatHistory');
+    if (history) {
+      try {
+        this.chatHistory = JSON.parse(history);
+        // Optionally, trigger UI re-render
+        // this.uiManager.renderChatHistory(this.chatHistory);
+      } catch (e) {
+        this.chatHistory = [];
+      }
+    }
   }
 }
