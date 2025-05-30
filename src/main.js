@@ -1,4 +1,4 @@
-// src/main.js - Updated sections for instance support
+// src/main.js - Fixed initialization section
 import './style.css';
 import FHIR from 'fhirclient';
 import { DataFetcherService } from './dataFetcher.js';
@@ -60,26 +60,51 @@ class EHRAssistantApp {
       const launchToken = params.get('launch');
       const iss = params.get('iss');
       
+      // IMPORTANT: Check both regular sessionStorage AND instance storage
+      // The FHIR client might have stored the key in regular sessionStorage during OAuth callback
+      const hasRegularSmartKey = !!sessionStorage.getItem('SMART_KEY');
+      const hasInstanceSmartKey = !!this.instanceManager.hasItem('SMART_KEY');
+      
       console.log('Launch params:', { 
         launchToken: !!launchToken, 
         iss: !!iss, 
-        hasSmartKey: !!this.instanceManager.hasItem('SMART_KEY'),
+        hasRegularSmartKey,
+        hasInstanceSmartKey,
         instanceId: this.instanceManager.getInstanceId()
       });
 
-      // Check for existing SMART context for THIS instance
-      if (this.instanceManager.hasItem('SMART_KEY')) {
+      // If we have SMART context in regular storage but not instance storage, migrate it
+      if (hasRegularSmartKey && !hasInstanceSmartKey) {
+        console.log('Migrating SMART context to instance storage...');
+        await this.migrateSmartContext();
+      }
+
+      // Check for existing SMART context
+      if (hasRegularSmartKey || hasInstanceSmartKey) {
         await this.initializeWithSMARTClient();
       } else if (launchToken && iss) {
         await this.authorizeWithEHR(launchToken, iss);
       } else {
         this.uiManager.showLoading(false);
-        this.uiManager.displayError("This app requires an EHR launch or manual configuration.");
+        this.uiManager.displayError("This app requires an EHR launch. Please launch from within Epic.");
         this.chatManager.setupChatInterface();
       }
     } catch (error) {
       console.error('Failed to initialize app:', error);
-      throw error;
+      this.uiManager.displayError(`Initialization error: ${error.message}`, error);
+    }
+  }
+
+  async migrateSmartContext() {
+    // Get all SMART-related keys from regular sessionStorage
+    const smartKeys = ['SMART_KEY', 'SMART_STATE', 'SMART_AUTH_RESPONSE'];
+    
+    for (const key of smartKeys) {
+      const value = sessionStorage.getItem(key);
+      if (value) {
+        this.instanceManager.setItem(key, value);
+        console.log(`Migrated ${key} to instance storage`);
+      }
     }
   }
 
@@ -96,20 +121,45 @@ class EHRAssistantApp {
     }
 
     try {
-      // Use instance-specific storage for FHIR client
-      const instanceStorage = {
-        get: (key) => this.instanceManager.getItem(key),
-        set: (key, value) => this.instanceManager.setItem(key, value),
-        unset: (key) => this.instanceManager.removeItem(key)
+      // Create custom storage that checks both instance and regular storage
+      const hybridStorage = {
+        get: (key) => {
+          // First check instance storage
+          let value = this.instanceManager.getItem(key);
+          // Fall back to regular sessionStorage if not found
+          if (!value) {
+            value = sessionStorage.getItem(key);
+            // If found in regular storage, migrate to instance storage
+            if (value) {
+              this.instanceManager.setItem(key, value);
+            }
+          }
+          return value;
+        },
+        set: (key, value) => {
+          // Always set in instance storage
+          this.instanceManager.setItem(key, value);
+          // Also set in regular storage for compatibility
+          sessionStorage.setItem(key, value);
+        },
+        unset: (key) => {
+          this.instanceManager.removeItem(key);
+          sessionStorage.removeItem(key);
+        }
       };
 
       // Pass custom storage to FHIR client
       const client = await FHIR.oauth2.ready({
-        storage: instanceStorage
+        storage: hybridStorage
       });
       
       this.smartClient = client;
       window.smartClient = client; // For debugging
+
+      // Store patient ID for this instance
+      if (client.patient?.id) {
+        this.instanceManager.setItem('currentPatientId', client.patient.id);
+      }
 
       // --- Enhanced OAuth Debug Logging ---
       const tokenResponse = client.state.tokenResponse || {};
@@ -146,6 +196,7 @@ class EHRAssistantApp {
 
       console.log("Patient data loaded for instance:", this.instanceManager.getInstanceId());
     } catch (err) {
+      console.error('SMART initialization error:', err);
       this.uiManager.displayError(`SMART init error: ${err.message}`, err);
     }
   }
@@ -176,30 +227,42 @@ class EHRAssistantApp {
     try {
       // Generate and store OAuth state for this instance
       const oauthState = `${this.instanceManager.getInstanceId()}_${Date.now()}`;
-      this.instanceManager.setOAuthState(oauthState);
-
-      // Use instance-specific storage
-      const instanceStorage = {
-        get: (key) => this.instanceManager.getItem(key),
-        set: (key, value) => this.instanceManager.setItem(key, value),
-        unset: (key) => this.instanceManager.removeItem(key)
+      
+      // Use hybrid storage for OAuth
+      const hybridStorage = {
+        get: (key) => {
+          let value = this.instanceManager.getItem(key);
+          if (!value) {
+            value = sessionStorage.getItem(key);
+          }
+          return value;
+        },
+        set: (key, value) => {
+          this.instanceManager.setItem(key, value);
+          sessionStorage.setItem(key, value);
+        },
+        unset: (key) => {
+          this.instanceManager.removeItem(key);
+          sessionStorage.removeItem(key);
+        }
       };
+
+      // Store the OAuth state
+      hybridStorage.set('oauth_state', oauthState);
 
       await FHIR.oauth2.authorize({
         client_id: clientId,
         scope: this.buildAuthScope(),
-        redirect_uri: APP_CONFIG.REDIRECT_URI,
+        redirect_uri: APP_CONFIG.REDIRECT_URI + `?instanceId=${this.instanceManager.getInstanceId()}`,
         iss,
         launch: launchToken,
         state: oauthState,
-        storage: instanceStorage
+        storage: hybridStorage
       });
     } catch (err) {
       this.uiManager.displayError(`Auth error: ${err.message}`, err);
     }
   }
-
-  // ... rest of the methods remain the same ...
 
   buildAuthScope() {
     return 'launch launch/patient patient/*.read observation/*.read medication/*.read encounter/*.read condition/*.read diagnosticreport/*.read documentreference/*.read allergyintolerance/*.read appointment/*.read immunization/*.read procedure/*.read questionnaire/*.read questionnaireresponse/*.read binary/*.read openid fhirUser ' +
@@ -210,7 +273,6 @@ class EHRAssistantApp {
   async loadInitialData() {
     this.uiManager.showLoading(true);
     try {
-      // Store patient data in instance-specific cache
       await this.loadPatientData();
 
       const encounterBundle = await this.dataFetcher.fetchData('Encounters', {
@@ -232,7 +294,6 @@ class EHRAssistantApp {
     try {
       const patientData = await this.dataFetcher.fetchData('Patient');
       this.dataCache.patient = patientData;
-      // Store patient ID for this instance
       this.instanceManager.setItem('currentPatientId', patientData.id);
       this.uiManager.displayPatientHeaderInfo(patientData, this.smartClient);
       console.log("✅ Patient resource loaded for instance:", this.instanceManager.getInstanceId());
@@ -241,7 +302,21 @@ class EHRAssistantApp {
     }
   }
 
-  // ... rest of the methods remain the same ...
+  processBatchResults(results) {
+    results.forEach(({ type, data, success, error }) => {
+      if (success) {
+        this.dataCache[type.toLowerCase()] = data;
+        console.log(`${type} data loaded:`, data?.entry?.length || 0, "entries");
+
+        if (data?.entry?.length > 0) {
+          console.log(`📄 First ${type} resource:`, data.entry[0].resource);
+        }
+      } else {
+        console.error(`Failed to load ${type}:`, error);
+        this.dataCache[type.toLowerCase()] = { entry: [] };
+      }
+    });
+  }
 
   setupEventListeners() {
     // UI toggles
@@ -293,22 +368,6 @@ class EHRAssistantApp {
     setInterval(() => {
       this.instanceManager.cleanupOldInstances();
     }, 60 * 60 * 1000); // Every hour
-  }
-
-  processBatchResults(results) {
-    results.forEach(({ type, data, success, error }) => {
-      if (success) {
-        this.dataCache[type.toLowerCase()] = data;
-        console.log(`${type} data loaded:`, data?.entry?.length || 0, "entries");
-
-        if (data?.entry?.length > 0) {
-          console.log(`📄 First ${type} resource:`, data.entry[0].resource);
-        }
-      } else {
-        console.error(`Failed to load ${type}:`, error);
-        this.dataCache[type.toLowerCase()] = { entry: [] };
-      }
-    });
   }
 
   downloadJSON(data, filename) {
