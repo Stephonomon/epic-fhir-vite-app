@@ -11,14 +11,22 @@ export class UIManager {
     this.rawDataCache = {};
     this.eventHandlers = new Map();
     this.setupDOMReferences();
+    
+    // Configure marked options for better table rendering
+    marked.setOptions({
+      breaks: true,
+      gfm: true,
+      tables: true,
+      sanitize: false,
+      smartLists: true,
+      smartypants: true
+    });
   }
 
   setupDOMReferences() {
     // Cache DOM references for performance
     this.dom = {
       loading: document.getElementById('loading'),
-      settingsPanel: document.getElementById('settings-panel'),
-      settingsToggle: document.getElementById('settings-toggle'),
       dataInspector: document.getElementById('data-inspector'),
       inspectorToggle: document.getElementById('data-inspector-toggle'),
       inspectorClose: document.getElementById('inspector-close'),
@@ -28,6 +36,8 @@ export class UIManager {
       clearChatBtn: document.getElementById('clear-chat'),
       exportChatBtn: document.getElementById('export-chat'),
       searchHistoryContainer: document.getElementById('search-history'),
+      searchHistoryContent: document.getElementById('search-history-content'),
+      rawDataContent: document.getElementById('raw-data-content'),
       dataViewerSelect: document.getElementById('data-viewer-select'),
       rawDataViewer: document.getElementById('raw-data-viewer'),
       copyRawDataBtn: document.getElementById('copy-raw-data'),
@@ -35,48 +45,17 @@ export class UIManager {
       patientNameEl: document.querySelector('.patient-name'),
       patientAgeGenderEl: document.getElementById('patient-age-gender'),
       patientMrnEl: document.getElementById('patient-mrn'),
-      patientCsnEl: document.getElementById('patient-csn'),
-      // Context indicators
-      indicators: {
-        patient: document.getElementById('patient-indicator'),
-        vitals: document.getElementById('vitals-indicator'),
-        meds: document.getElementById('meds-indicator'),
-        encounters: document.getElementById('encounters-indicator'),
-        conditions: document.getElementById('conditions-indicator'),
-        enhanced: document.getElementById('enhanced-indicator')
-      }
+      patientCsnEl: document.getElementById('patient-csn')
     };
   }
 
   setupUIListeners() {
-    // Settings toggle
-    this.dom.settingsToggle?.addEventListener('click', () => this.toggleSettings());
-    
     // Data inspector toggle
     this.dom.inspectorToggle?.addEventListener('click', () => this.toggleDataInspector());
     
     // Inspector close button
     this.dom.inspectorClose?.addEventListener('click', () => {
       this.dom.dataInspector.style.display = 'none';
-    });
-    
-    // Context toggles (checkboxes)
-    const contextToggles = {
-      'toggle-patient': 'includePatient',
-      'toggle-vitals': 'includeVitals',
-      'toggle-meds': 'includeMeds',
-      'toggle-encounters': 'includeEncounters',
-      'toggle-conditions': 'includeConditions',
-      'toggle-enhanced': 'useEnhancedChat'
-    };
-    
-    Object.entries(contextToggles).forEach(([elementId, configKey]) => {
-      const element = document.getElementById(elementId);
-      if (element) {
-        element.addEventListener('change', (e) => {
-          this.configManager.updateConfig({ [configKey]: e.target.checked });
-        });
-      }
     });
     
     // Clear chat
@@ -88,6 +67,14 @@ export class UIManager {
     // Export chat
     this.dom.exportChatBtn?.addEventListener('click', () => {
       this.emit('exportRequested', 'chat');
+    });
+    
+    // Collapsible section headers
+    document.querySelectorAll('.section-header.collapsible').forEach(header => {
+      header.addEventListener('click', (e) => {
+        const section = e.currentTarget.dataset.section;
+        this.toggleSection(section, header);
+      });
     });
     
     // Data viewer dropdown
@@ -104,13 +91,6 @@ export class UIManager {
         navigator.clipboard.writeText(JSON.stringify(this.rawDataCache[searchId], null, 2));
         this.dom.copyRawDataBtn.innerHTML = '✓';
         setTimeout(() => this.dom.copyRawDataBtn.innerHTML = '📋', 1000);
-      }
-    });
-    
-    // Close dropdowns when clicking outside
-    document.addEventListener('click', (e) => {
-      if (!e.target.closest('#settings-panel') && !e.target.closest('#settings-toggle')) {
-        this.dom.settingsPanel.style.display = 'none';
       }
     });
   }
@@ -136,42 +116,24 @@ export class UIManager {
     }
   }
 
-  toggleSettings() {
-    const isVisible = this.dom.settingsPanel.style.display === 'block';
-    this.dom.settingsPanel.style.display = isVisible ? 'none' : 'block';
-    
-    // Close data inspector if open
-    if (!isVisible) {
-      this.dom.dataInspector.style.display = 'none';
-    }
-  }
-
   toggleDataInspector() {
     const isVisible = this.dom.dataInspector.style.display === 'block';
     this.dom.dataInspector.style.display = isVisible ? 'none' : 'block';
-    
-    // Close settings if open
-    if (!isVisible) {
-      this.dom.settingsPanel.style.display = 'none';
-    }
   }
 
-  updateContextIndicators(config) {
-    const indicatorMap = {
-      'patient': config.includePatient,
-      'vitals': config.includeVitals,
-      'meds': config.includeMeds,
-      'encounters': config.includeEncounters,
-      'conditions': config.includeConditions,
-      'enhanced': config.useEnhancedChat
-    };
+  toggleSection(sectionName, headerElement) {
+    const content = document.getElementById(`${sectionName}-content`);
+    if (!content) return;
     
-    Object.entries(indicatorMap).forEach(([key, enabled]) => {
-      const indicator = this.dom.indicators[key];
-      if (indicator) {
-        indicator.className = `context-indicator ${enabled ? 'enabled' : 'disabled'}`;
-      }
-    });
+    const isCollapsed = content.classList.contains('collapsed');
+    
+    if (isCollapsed) {
+      content.classList.remove('collapsed');
+      headerElement.classList.add('expanded');
+    } else {
+      content.classList.add('collapsed');
+      headerElement.classList.remove('expanded');
+    }
   }
 
   // Patient Information Display
@@ -185,7 +147,7 @@ export class UIManager {
       this.dom.patientAgeGenderEl.textContent = `${this.calculateAge(patientInfo.birthDate)} / ${patientInfo.gender}`;
     }
     if (this.dom.patientMrnEl) {
-      this.dom.patientMrnEl.textContent = `PAT ID: ${patientInfo.patId}`;
+      this.dom.patientMrnEl.textContent = `MRN: ${patientInfo.patId}`;
     }
     if (this.dom.patientCsnEl) {
       this.dom.patientCsnEl.textContent = `CSN: ${patientInfo.csn}`;
@@ -210,7 +172,7 @@ export class UIManager {
       <div class="welcome-message">
         <div class="welcome-header">
           <span class="icon">🤖</span>
-          <h3>Welcome to EHR Assistant</h3>
+          <h3>Welcome to CAiA</h3>
         </div>
         <p>I can help you analyze patient data, answer questions about medications, vitals, conditions, and more. Ask me anything about this patient!</p>
         <div class="quick-start">
@@ -253,13 +215,16 @@ export class UIManager {
       toolInfo = `<div class="tool-usage">🔍 Searched: ${tools}</div>`;
     }
     
+    // Parse markdown content for assistant messages
+    const messageContent = role === 'assistant' ? marked.parse(content) : this.escapeHtml(content);
+    
     messageDiv.innerHTML = `
       <div class="message-header">
         <span class="message-role">${role === 'user' ? 'You' : 'Assistant'}</span>
         <span class="message-time">${timestamp}</span>
       </div>
       ${toolInfo}
-      <div class="message-content">${role === 'assistant' ? marked.parse(content) : content}</div>
+      <div class="message-content">${messageContent}</div>
       <div class="message-actions">
         <button onclick="window.uiManager.copyMessage(this)" title="Copy message">📋</button>
         ${role === 'assistant' ? '<button onclick="window.uiManager.askFollowUp(this)" title="Ask follow-up">💬</button>' : ''}
@@ -268,6 +233,12 @@ export class UIManager {
     
     this.dom.chatHistory.appendChild(messageDiv);
     this.dom.chatHistory.scrollTop = this.dom.chatHistory.scrollHeight;
+  }
+
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 
   clearChat() {
@@ -359,7 +330,7 @@ export class UIManager {
         <h5>${search.function}</h5>
         <div class="data-meta">
           <span>Time: ${search.timestamp}</span>
-          <span>Entries: ${rawData.entry?.length || 0}</span>
+          <span>Entries: ${rawData.entry?.length || rawData.count || 0}</span>
           <span>Total: ${rawData.total || 'Unknown'}</span>
         </div>
       </div>

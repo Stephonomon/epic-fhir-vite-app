@@ -8,9 +8,11 @@ import { ChatManager } from './chatManager.js';
 import { ConfigManager } from './configManager.js';
 import { marked } from 'marked';
 
+
+
 // --- Configuration ---
 const APP_CONFIG = {
-  CLIENT_ID: '023dda75-b5e9-4f99-9c0b-dc5704a04164',
+  //CLIENT_ID: clientId,
   REDIRECT_URI: window.location.origin + window.location.pathname,
   BACKEND_PROXY_URL: 'https://snp-vite-backend.onrender.com/api/fhir-proxy',
   OPENAI_API_KEY: import.meta.env.VITE_OPENAI_API_KEY,
@@ -75,53 +77,98 @@ class EHRAssistantApp {
   }
 
   async initializeWithSMARTClient() {
+  function decodeJWT(token) {
     try {
-      const client = await FHIR.oauth2.ready();
-      this.smartClient = client;
-      window.smartClient = client; // For debugging
-
-      // Initialize services
-      this.dataFetcher = new DataFetcherService(client, APP_CONFIG.BACKEND_PROXY_URL);
-      
-      if (this.configManager.getConfig().useEnhancedChat && APP_CONFIG.OPENAI_API_KEY) {
-        this.enhancedChat = new EnhancedFHIRChat(APP_CONFIG.OPENAI_API_KEY, client, APP_CONFIG.BACKEND_PROXY_URL);
-        this.chatManager.setEnhancedChat(this.enhancedChat);
-        console.log('Enhanced FHIR chat initialized');
-      }
-
-      // Load initial data
-      await this.loadInitialData();
-
-      // Setup chat interface
-      this.chatManager.setupChatInterface();
-      this.chatManager.setDataContext(this.dataCache);
-
-      console.log("All patient data loaded successfully");
+      const payload = token.split('.')[1];
+      const decoded = atob(payload);
+      return JSON.parse(decoded);
     } catch (err) {
-      this.uiManager.displayError(`SMART init error: ${err.message}`, err);
+      console.warn('JWT decode error:', err);
+      return null;
     }
   }
 
-  async authorizeWithEHR(launchToken, iss) {
-    if (!this.isAbsoluteUrl(iss)) {
-      this.uiManager.displayError(`Invalid 'iss' parameter: ${iss}`);
-      return;
+  try {
+    const client = await FHIR.oauth2.ready();
+    this.smartClient = client;
+    window.smartClient = client; // For debugging
+
+    // --- Enhanced OAuth Debug Logging ---
+    const tokenResponse = client.state.tokenResponse || {};
+    const accessToken = tokenResponse.access_token || '';
+
+    console.log('✅ SMART OAuth Scopes Granted:', tokenResponse.scope || '[none]');
+    console.log('🧠 Context Information:', {
+      patient: client.getPatientId(),
+      user: client.getUserId()
+    });
+
+    const decoded = decodeJWT(accessToken);
+    if (decoded) {
+      console.log('🔍 Decoded Access Token Payload:', decoded);
+    } else {
+      console.log('⚠️ Token is not a decodable JWT or malformed.');
     }
 
-    this.uiManager.showLoading(true);
-    
-    try {
-      await FHIR.oauth2.authorize({
-        client_id: APP_CONFIG.CLIENT_ID,
-        scope: this.buildAuthScope(),
-        redirect_uri: APP_CONFIG.REDIRECT_URI,
-        iss,
-        launch: launchToken,
-      });
-    } catch (err) {
-      this.uiManager.displayError(`Auth error: ${err.message}`, err);
+    console.log('📦 Full SMART Client State:', client.state);
+
+    // --- Initialize Services ---
+    this.dataFetcher = new DataFetcherService(client, APP_CONFIG.BACKEND_PROXY_URL);
+
+    if (APP_CONFIG.OPENAI_API_KEY) {
+      this.enhancedChat = new EnhancedFHIRChat(APP_CONFIG.OPENAI_API_KEY, client, APP_CONFIG.BACKEND_PROXY_URL);
+      this.chatManager.setEnhancedChat(this.enhancedChat);
+      console.log('🧠 Enhanced FHIR chat initialized');
     }
+
+    await this.loadInitialData();
+    this.chatManager.setupChatInterface();
+    this.chatManager.setDataContext(this.dataCache);
+
+    console.log("Patient data loaded");
+  } catch (err) {
+    this.uiManager.displayError(`SMART init error: ${err.message}`, err);
   }
+}
+
+
+async authorizeWithEHR(launchToken, iss) {
+  if (!this.isAbsoluteUrl(iss)) {
+    this.uiManager.displayError(`Invalid 'iss' parameter: ${iss}`);
+    return;
+  }
+
+  let clientId = APP_CONFIG.CLIENT_ID; // ✅ Declare it properly here
+
+  // Try to decode launch token to extract dynamic client_id
+  try {
+    const payload = JSON.parse(atob(launchToken.split('.')[1]));
+    if (payload.client_id) {
+      clientId = payload.client_id;
+      console.log('✅ Extracted client_id from launch token:', clientId);
+    } else {
+      console.warn('⚠️ client_id not found in launch token payload');
+    }
+  } catch (err) {
+    console.error('❌ Failed to decode launch token:', err);
+  }
+
+  this.uiManager.showLoading(true);
+
+  try {
+    await FHIR.oauth2.authorize({
+      client_id: clientId,
+      scope: this.buildAuthScope(),
+      redirect_uri: APP_CONFIG.REDIRECT_URI,
+      iss,
+      launch: launchToken,
+    });
+  } catch (err) {
+    this.uiManager.displayError(`Auth error: ${err.message}`, err);
+  }
+}
+
+
 
   buildAuthScope() {
     // Use wildcard scopes like the original code
@@ -130,37 +177,35 @@ class EHRAssistantApp {
            'context-user_timestamp context-workstation_id context-csn context-pat_id';
   }
 
-// in EHRAssistantApp.loadInitialData (src/main.js)
-async loadInitialData() {
-  this.uiManager.showLoading(true);
-  try {
-    // 1) Always fetch demographics
-    await this.loadPatientData();
+  async loadInitialData() {
+    this.uiManager.showLoading(true);
+    try {
+      // 1) Always fetch demographics
+      await this.loadPatientData();
 
-    // 2) Only fetch the single most-recent encounter
-    const encounterBundle = await this.dataFetcher.fetchData('Encounters', {
-      count: 1,
-      useCache: true
-    });
-    this.processBatchResults([
-      { type: 'Encounters', data: encounterBundle, success: true }
-    ]);
+      // 2) Only fetch the single most-recent encounter
+      const encounterBundle = await this.dataFetcher.fetchData('Encounters', {
+        count: 1,
+        useCache: true
+      });
+      this.processBatchResults([
+        { type: 'Encounters', data: encounterBundle, success: true }
+      ]);
 
-    // 3) Defer everything else until the user navigates or asks
-  } catch (err) {
-    this.uiManager.displayError(`Failed to load initial data: ${err.message}`, err);
-  } finally {
-    this.uiManager.showLoading(false);
+      // 3) Defer everything else until the user navigates or asks
+    } catch (err) {
+      this.uiManager.displayError(`Failed to load initial data: ${err.message}`, err);
+    } finally {
+      this.uiManager.showLoading(false);
+    }
   }
-}
-
 
   async loadPatientData() {
     try {
       const patientData = await this.dataFetcher.fetchData('Patient');
       this.dataCache.patient = patientData;
       this.uiManager.displayPatientHeaderInfo(patientData, this.smartClient);
-      console.log("Patient data loaded");
+      console.log("✅ Patient resource loaded:", patientData);
     } catch (error) {
       throw new Error(`Failed to fetch patient data: ${error.message}`);
     }
@@ -171,6 +216,10 @@ async loadInitialData() {
       if (success) {
         this.dataCache[type.toLowerCase()] = data;
         console.log(`${type} data loaded:`, data?.entry?.length || 0, "entries");
+
+        if (data?.entry?.length > 0) {
+        console.log(`📄 First ${type} resource:`, data.entry[0].resource);
+}
       } else {
         console.error(`Failed to load ${type}:`, error);
         this.dataCache[type.toLowerCase()] = { entry: [] };
@@ -179,20 +228,8 @@ async loadInitialData() {
   }
 
   setupEventListeners() {
-    // Settings and UI toggles
+    // UI toggles
     this.uiManager.setupUIListeners();
-
-    // Context configuration changes
-    this.configManager.on('configChange', (newConfig) => {
-      this.uiManager.updateContextIndicators(newConfig);
-      this.chatManager.updateConfig(newConfig);
-      
-      // Reinitialize enhanced chat if toggled
-      if (newConfig.useEnhancedChat && !this.enhancedChat && this.smartClient && APP_CONFIG.OPENAI_API_KEY) {
-        this.enhancedChat = new EnhancedFHIRChat(APP_CONFIG.OPENAI_API_KEY, this.smartClient, APP_CONFIG.BACKEND_PROXY_URL);
-        this.chatManager.setEnhancedChat(this.enhancedChat);
-      }
-    });
 
     // Chat interface events
     this.chatManager.on('searchPerformed', (searchData) => {
@@ -253,10 +290,10 @@ async loadInitialData() {
   }
 }
 
-
-  
-  // Initialize the app
+// Initialize the app when the document is loaded
+document.addEventListener('DOMContentLoaded', () => {
   const app = new EHRAssistantApp();
   app.init().catch(err => {
     console.error('Failed to initialize app:', err);
   });
+});

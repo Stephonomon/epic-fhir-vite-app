@@ -1,16 +1,6 @@
 // src/chatManager.js
 // Centralized chat management for the EHR Assistant
 
-import { getChatResponse } from './openaiChat.js';
-import { 
-  summarizePatient, 
-  summarizeVitals, 
-  summarizeMeds,
-  summarizeEncounters,
-  summarizeConditions
-} from './summarizers.js';
-import { extractPatientInfo } from './fhirUtils.js';
-
 export class ChatManager {
   constructor(uiManager, openAiKey) {
     this.uiManager = uiManager;
@@ -18,18 +8,6 @@ export class ChatManager {
     this.enhancedChat = null;
     this.chatHistory = [];
     this.dataContext = {};
-    this.config = {
-      vitalsCount: 10,
-      medsCount: 10,
-      encounterCount: 10,
-      conditionCount: 10,
-      includePatient: true,
-      includeVitals: true,
-      includeMeds: true,
-      includeEncounters: true,
-      includeConditions: true,
-      useEnhancedChat: true
-    };
     this.eventHandlers = new Map();
   }
 
@@ -39,10 +17,6 @@ export class ChatManager {
 
   setDataContext(dataContext) {
     this.dataContext = dataContext;
-  }
-
-  updateConfig(newConfig) {
-    this.config = { ...this.config, ...newConfig };
   }
 
   setupChatInterface() {
@@ -96,7 +70,8 @@ export class ChatManager {
     try {
       let aiResp;
       
-      if (this.config.useEnhancedChat && this.enhancedChat) {
+      // Always use enhanced chat mode
+      if (this.enhancedChat) {
         console.log('Using enhanced chat mode');
         
         // Patch the enhanced chat to capture search data
@@ -142,24 +117,8 @@ export class ChatManager {
           timestamp: new Date().toISOString() 
         });
       } else {
-        // Fallback to original static chat
-        aiResp = await getChatResponse({
-          chatHistory: this.chatHistory.slice(-10), // Keep conversation manageable
-          patient: this.config.includePatient ? this.dataContext.patient : null,
-          vitals: this.config.includeVitals ? this.dataContext.vitalsigns : null,
-          meds: this.config.includeMeds ? this.dataContext.medicationrequests : null,
-          encounters: this.config.includeEncounters ? this.dataContext.encounters : null,
-          conditions: this.config.includeConditions ? this.dataContext.conditions : null,
-          config: this.config,
-          openAiKey: this.openAiKey,
-          smartContext: window.smartClient
-        });
-        this.uiManager.addChatMessage('assistant', aiResp.content);
-        this.chatHistory.push({ 
-          role: 'assistant', 
-          content: aiResp.content, 
-          timestamp: new Date().toISOString() 
-        });
+        // No enhanced chat available
+        this.uiManager.addChatMessage('assistant', 'Enhanced chat mode is not available. Please ensure the OpenAI API key is configured.');
       }
       
     } catch (error) {
@@ -197,35 +156,7 @@ export class ChatManager {
     return {
       patient: this.dataContext.patient ? extractPatientInfo(this.dataContext.patient, window.smartClient) : null,
       chatHistory: this.chatHistory,
-      config: this.config,
       timestamp: new Date().toISOString()
     };
-  }
-
-  // Prepare context for static chat
-  prepareStaticContext() {
-    const contextParts = [];
-    
-    if (this.config.includePatient && this.dataContext.patient) {
-      contextParts.push(summarizePatient(this.dataContext.patient, window.smartClient));
-    }
-    
-    if (this.config.includeVitals && this.dataContext.vitalsigns) {
-      contextParts.push(summarizeVitals(this.dataContext.vitalsigns, this.config.vitalsCount));
-    }
-    
-    if (this.config.includeMeds && this.dataContext.medicationrequests) {
-      contextParts.push(summarizeMeds(this.dataContext.medicationrequests, this.config.medsCount));
-    }
-    
-    if (this.config.includeEncounters && this.dataContext.encounters) {
-      contextParts.push(summarizeEncounters(this.dataContext.encounters, this.config.encounterCount));
-    }
-    
-    if (this.config.includeConditions && this.dataContext.conditions) {
-      contextParts.push(summarizeConditions(this.dataContext.conditions, this.config.conditionCount));
-    }
-    
-    return contextParts.filter(Boolean).join('\n\n');
   }
 }
