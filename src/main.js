@@ -1,4 +1,4 @@
-// src/main.js - Fixed initialization section
+// src/main.js - Complete version with OAuth handling and multi-instance support
 import './style.css';
 import FHIR from 'fhirclient';
 import { DataFetcherService } from './dataFetcher.js';
@@ -11,6 +11,7 @@ import { getInstanceManager } from './instanceSessionManager.js';
 
 // --- Configuration ---
 const APP_CONFIG = {
+  CLIENT_ID: '023dda75-b5e9-4f99-9c0b-dc5704a04164', // Your Epic client ID
   REDIRECT_URI: window.location.origin + window.location.pathname,
   BACKEND_PROXY_URL: 'https://snp-vite-backend.onrender.com/api/fhir-proxy',
   OPENAI_API_KEY: import.meta.env.VITE_OPENAI_API_KEY,
@@ -36,6 +37,7 @@ class EHRAssistantApp {
     try {
       console.log('Initializing EHR Assistant App...');
       console.log('Instance ID:', this.instanceManager.getInstanceId());
+      console.log('Current URL:', window.location.href);
       
       // Initialize managers
       this.configManager = new ConfigManager();
@@ -55,36 +57,37 @@ class EHRAssistantApp {
       this.uiManager.displayWelcomeMessage();
       console.log('Welcome message displayed');
 
-      // Check for SMART launch parameters
+      // Check if we're in an OAuth callback
       const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      const state = params.get('state');
       const launchToken = params.get('launch');
       const iss = params.get('iss');
       
-      // IMPORTANT: Check both regular sessionStorage AND instance storage
-      // The FHIR client might have stored the key in regular sessionStorage during OAuth callback
-      const hasRegularSmartKey = !!sessionStorage.getItem('SMART_KEY');
-      const hasInstanceSmartKey = !!this.instanceManager.hasItem('SMART_KEY');
-      
-      console.log('Launch params:', { 
-        launchToken: !!launchToken, 
-        iss: !!iss, 
-        hasRegularSmartKey,
-        hasInstanceSmartKey,
-        instanceId: this.instanceManager.getInstanceId()
+      console.log('URL Parameters:', {
+        hasCode: !!code,
+        hasState: !!state,
+        hasLaunch: !!launchToken,
+        hasIss: !!iss,
+        instanceId: params.get('instanceId')
       });
 
-      // If we have SMART context in regular storage but not instance storage, migrate it
-      if (hasRegularSmartKey && !hasInstanceSmartKey) {
-        console.log('Migrating SMART context to instance storage...');
-        await this.migrateSmartContext();
-      }
-
+      // Check if this is an OAuth callback
+      if (code && state) {
+        console.log('OAuth callback detected, handling authentication...');
+        await this.handleOAuthCallback();
+      } 
       // Check for existing SMART context
-      if (hasRegularSmartKey || hasInstanceSmartKey) {
+      else if (await this.hasValidSmartContext()) {
+        console.log('Existing SMART context found');
         await this.initializeWithSMARTClient();
-      } else if (launchToken && iss) {
+      } 
+      // Check for launch parameters
+      else if (launchToken && iss) {
+        console.log('Launch parameters found, starting authorization...');
         await this.authorizeWithEHR(launchToken, iss);
-      } else {
+      } 
+      else {
         this.uiManager.showLoading(false);
         this.uiManager.displayError("This app requires an EHR launch. Please launch from within Epic.");
         this.chatManager.setupChatInterface();
@@ -95,51 +98,101 @@ class EHRAssistantApp {
     }
   }
 
-  async migrateSmartContext() {
-    // Get all SMART-related keys from regular sessionStorage
-    const smartKeys = ['SMART_KEY', 'SMART_STATE', 'SMART_AUTH_RESPONSE'];
+  async hasValidSmartContext() {
+    // Check multiple possible storage locations
+    const checks = [
+      () => this.instanceManager.hasItem('SMART_KEY'),
+      () => !!sessionStorage.getItem('SMART_KEY'),
+      () => !!sessionStorage.getItem(`${this.instanceManager.getInstanceId()}_SMART_KEY`)
+    ];
     
-    for (const key of smartKeys) {
-      const value = sessionStorage.getItem(key);
-      if (value) {
-        this.instanceManager.setItem(key, value);
-        console.log(`Migrated ${key} to instance storage`);
+    for (const check of checks) {
+      if (check()) {
+        console.log('Found SMART context in storage');
+        return true;
       }
+    }
+    
+    return false;
+  }
+
+  async handleOAuthCallback() {
+    try {
+      console.log('Processing OAuth callback...');
+      
+      // Create storage adapter that works with both instance and regular storage
+      const storageAdapter = {
+        get: (key) => {
+          // Try multiple locations
+          const locations = [
+            () => this.instanceManager.getItem(key),
+            () => sessionStorage.getItem(key),
+            () => sessionStorage.getItem(`${this.instanceManager.getInstanceId()}_${key}`)
+          ];
+          
+          for (const getter of locations) {
+            const value = getter();
+            if (value) {
+              console.log(`Found ${key} in storage`);
+              return value;
+            }
+          }
+          return null;
+        },
+        set: (key, value) => {
+          // Set in multiple locations for compatibility
+          this.instanceManager.setItem(key, value);
+          sessionStorage.setItem(key, value);
+          sessionStorage.setItem(`${this.instanceManager.getInstanceId()}_${key}`, value);
+        },
+        unset: (key) => {
+          this.instanceManager.removeItem(key);
+          sessionStorage.removeItem(key);
+          sessionStorage.removeItem(`${this.instanceManager.getInstanceId()}_${key}`);
+        }
+      };
+
+      // Complete the OAuth flow
+      const client = await FHIR.oauth2.completeAuth({
+        storage: storageAdapter
+      });
+      
+      console.log('OAuth completed successfully');
+      
+      // Store the client for later use
+      this.smartClient = client;
+      window.smartClient = client;
+      
+      // Continue with initialization
+      await this.continueInitialization();
+      
+    } catch (error) {
+      console.error('OAuth callback error:', error);
+      this.uiManager.displayError(`Authentication failed: ${error.message}`, error);
     }
   }
 
   async initializeWithSMARTClient() {
-    function decodeJWT(token) {
-      try {
-        const payload = token.split('.')[1];
-        const decoded = atob(payload);
-        return JSON.parse(decoded);
-      } catch (err) {
-        console.warn('JWT decode error:', err);
-        return null;
-      }
-    }
-
     try {
-      // Create custom storage that checks both instance and regular storage
-      const hybridStorage = {
+      console.log('Initializing with SMART client...');
+      
+      // Create storage adapter
+      const storageAdapter = {
         get: (key) => {
-          // First check instance storage
-          let value = this.instanceManager.getItem(key);
-          // Fall back to regular sessionStorage if not found
-          if (!value) {
-            value = sessionStorage.getItem(key);
-            // If found in regular storage, migrate to instance storage
-            if (value) {
-              this.instanceManager.setItem(key, value);
-            }
+          const locations = [
+            () => this.instanceManager.getItem(key),
+            () => sessionStorage.getItem(key),
+            () => sessionStorage.getItem(`${this.instanceManager.getInstanceId()}_${key}`)
+          ];
+          
+          for (const getter of locations) {
+            const value = getter();
+            if (value) return value;
           }
-          return value;
+          return null;
         },
         set: (key, value) => {
-          // Always set in instance storage
           this.instanceManager.setItem(key, value);
-          // Also set in regular storage for compatibility
           sessionStorage.setItem(key, value);
         },
         unset: (key) => {
@@ -148,56 +201,74 @@ class EHRAssistantApp {
         }
       };
 
-      // Pass custom storage to FHIR client
+      // Get the ready client
       const client = await FHIR.oauth2.ready({
-        storage: hybridStorage
+        storage: storageAdapter
       });
       
       this.smartClient = client;
-      window.smartClient = client; // For debugging
-
-      // Store patient ID for this instance
-      if (client.patient?.id) {
-        this.instanceManager.setItem('currentPatientId', client.patient.id);
-      }
-
-      // --- Enhanced OAuth Debug Logging ---
-      const tokenResponse = client.state.tokenResponse || {};
-      const accessToken = tokenResponse.access_token || '';
-
-      console.log('✅ SMART OAuth Scopes Granted:', tokenResponse.scope || '[none]');
-      console.log('🧠 Context Information:', {
-        patient: client.getPatientId(),
-        user: client.getUserId(),
+      window.smartClient = client;
+      
+      console.log('SMART client ready:', {
+        patientId: client.patient?.id,
+        userId: client.user?.id,
         instanceId: this.instanceManager.getInstanceId()
       });
+      
+      await this.continueInitialization();
+      
+    } catch (err) {
+      console.error('SMART initialization error:', err);
+      this.uiManager.displayError(`SMART init error: ${err.message}`, err);
+    }
+  }
 
-      const decoded = decodeJWT(accessToken);
-      if (decoded) {
-        console.log('🔍 Decoded Access Token Payload:', decoded);
-      } else {
-        console.log('⚠️ Token is not a decodable JWT or malformed.');
+  async continueInitialization() {
+    try {
+      // Validate we have a valid client
+      if (!this.smartClient) {
+        throw new Error('No SMART client available');
+      }
+      
+      // Store patient ID for this instance
+      if (this.smartClient.patient?.id) {
+        this.instanceManager.setItem('currentPatientId', this.smartClient.patient.id);
       }
 
-      console.log('📦 Full SMART Client State:', client.state);
+      // Log token information
+      const tokenResponse = this.smartClient.state?.tokenResponse || {};
+      console.log('Token info:', {
+        hasAccessToken: !!tokenResponse.access_token,
+        scopes: tokenResponse.scope,
+        patient: this.smartClient.patient?.id,
+        user: this.smartClient.user?.id,
+        csn: tokenResponse.csn,
+        pat_id: tokenResponse.pat_id
+      });
 
-      // --- Initialize Services ---
-      this.dataFetcher = new DataFetcherService(client, APP_CONFIG.BACKEND_PROXY_URL);
+      // Initialize services
+      this.dataFetcher = new DataFetcherService(this.smartClient, APP_CONFIG.BACKEND_PROXY_URL);
 
       if (APP_CONFIG.OPENAI_API_KEY) {
-        this.enhancedChat = new EnhancedFHIRChat(APP_CONFIG.OPENAI_API_KEY, client, APP_CONFIG.BACKEND_PROXY_URL);
+        this.enhancedChat = new EnhancedFHIRChat(
+          APP_CONFIG.OPENAI_API_KEY, 
+          this.smartClient, 
+          APP_CONFIG.BACKEND_PROXY_URL
+        );
         this.chatManager.setEnhancedChat(this.enhancedChat);
-        console.log('🧠 Enhanced FHIR chat initialized');
+        console.log('Enhanced FHIR chat initialized');
       }
 
+      // Load initial data
       await this.loadInitialData();
       this.chatManager.setupChatInterface();
       this.chatManager.setDataContext(this.dataCache);
 
-      console.log("Patient data loaded for instance:", this.instanceManager.getInstanceId());
-    } catch (err) {
-      console.error('SMART initialization error:', err);
-      this.uiManager.displayError(`SMART init error: ${err.message}`, err);
+      console.log('Initialization complete for instance:', this.instanceManager.getInstanceId());
+      
+    } catch (error) {
+      console.error('Continuation error:', error);
+      throw error;
     }
   }
 
@@ -207,35 +278,39 @@ class EHRAssistantApp {
       return;
     }
 
-    let clientId = APP_CONFIG.CLIENT_ID;
+    // Extract client_id from launch token if possible
+    let clientId = APP_CONFIG.CLIENT_ID || '023dda75-b5e9-4f99-9c0b-dc5704a04164';
 
-    // Try to decode launch token to extract dynamic client_id
     try {
       const payload = JSON.parse(atob(launchToken.split('.')[1]));
       if (payload.client_id) {
         clientId = payload.client_id;
-        console.log('✅ Extracted client_id from launch token:', clientId);
-      } else {
-        console.warn('⚠️ client_id not found in launch token payload');
+        console.log('Extracted client_id from launch token:', clientId);
       }
     } catch (err) {
-      console.error('❌ Failed to decode launch token:', err);
+      console.warn('Could not decode launch token:', err);
     }
 
     this.uiManager.showLoading(true);
 
     try {
-      // Generate and store OAuth state for this instance
-      const oauthState = `${this.instanceManager.getInstanceId()}_${Date.now()}`;
+      // Store the current instance ID for after redirect
+      sessionStorage.setItem('currentInstanceId', this.instanceManager.getInstanceId());
       
-      // Use hybrid storage for OAuth
-      const hybridStorage = {
+      // Build redirect URI with instance ID
+      const redirectUri = `${APP_CONFIG.REDIRECT_URI}?instanceId=${this.instanceManager.getInstanceId()}`;
+      
+      console.log('Starting authorization with:', {
+        clientId,
+        redirectUri,
+        iss,
+        instanceId: this.instanceManager.getInstanceId()
+      });
+
+      // Create storage adapter
+      const storageAdapter = {
         get: (key) => {
-          let value = this.instanceManager.getItem(key);
-          if (!value) {
-            value = sessionStorage.getItem(key);
-          }
-          return value;
+          return this.instanceManager.getItem(key) || sessionStorage.getItem(key);
         },
         set: (key, value) => {
           this.instanceManager.setItem(key, value);
@@ -247,17 +322,13 @@ class EHRAssistantApp {
         }
       };
 
-      // Store the OAuth state
-      hybridStorage.set('oauth_state', oauthState);
-
       await FHIR.oauth2.authorize({
         client_id: clientId,
         scope: this.buildAuthScope(),
-        redirect_uri: APP_CONFIG.REDIRECT_URI + `?instanceId=${this.instanceManager.getInstanceId()}`,
+        redirect_uri: redirectUri,
         iss,
         launch: launchToken,
-        state: oauthState,
-        storage: hybridStorage
+        storage: storageAdapter
       });
     } catch (err) {
       this.uiManager.displayError(`Auth error: ${err.message}`, err);
@@ -273,17 +344,24 @@ class EHRAssistantApp {
   async loadInitialData() {
     this.uiManager.showLoading(true);
     try {
+      // Validate client state before attempting to fetch
+      if (!this.smartClient?.state?.tokenResponse?.access_token) {
+        throw new Error('Invalid SMART client state - no access token');
+      }
+      
       await this.loadPatientData();
 
       const encounterBundle = await this.dataFetcher.fetchData('Encounters', {
         count: 1,
         useCache: true
       });
+      
       this.processBatchResults([
         { type: 'Encounters', data: encounterBundle, success: true }
       ]);
 
     } catch (err) {
+      console.error('Load initial data error:', err);
       this.uiManager.displayError(`Failed to load initial data: ${err.message}`, err);
     } finally {
       this.uiManager.showLoading(false);
@@ -296,8 +374,9 @@ class EHRAssistantApp {
       this.dataCache.patient = patientData;
       this.instanceManager.setItem('currentPatientId', patientData.id);
       this.uiManager.displayPatientHeaderInfo(patientData, this.smartClient);
-      console.log("✅ Patient resource loaded for instance:", this.instanceManager.getInstanceId());
+      console.log("Patient resource loaded:", patientData);
     } catch (error) {
+      console.error('Patient fetch error:', error);
       throw new Error(`Failed to fetch patient data: ${error.message}`);
     }
   }
@@ -307,7 +386,7 @@ class EHRAssistantApp {
       if (success) {
         this.dataCache[type.toLowerCase()] = data;
         console.log(`${type} data loaded:`, data?.entry?.length || 0, "entries");
-
+        
         if (data?.entry?.length > 0) {
           console.log(`📄 First ${type} resource:`, data.entry[0].resource);
         }

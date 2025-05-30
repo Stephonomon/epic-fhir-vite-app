@@ -5,12 +5,20 @@ export class InstanceSessionManager {
   constructor() {
     // Try to get instance ID from URL params first (for page reloads)
     const urlParams = new URLSearchParams(window.location.search);
-    this.instanceId = urlParams.get('instanceId') || this.generateInstanceId();
+    this.instanceId = urlParams.get('instanceId') || this.getStoredInstanceId() || this.generateInstanceId();
+    
+    // Store the instance ID for OAuth callbacks
+    sessionStorage.setItem('currentInstanceId', this.instanceId);
     
     // Ensure instance ID is in URL for future navigation
     if (!urlParams.get('instanceId')) {
       this.updateUrlWithInstanceId();
     }
+  }
+
+  getStoredInstanceId() {
+    // Check if we have a stored instance ID from before OAuth redirect
+    return sessionStorage.getItem('currentInstanceId');
   }
 
   generateInstanceId() {
