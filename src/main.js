@@ -7,6 +7,8 @@ import { UIManager } from './uiManager.js';
 import { ChatManager } from './chatManager.js';
 import { ConfigManager } from './configManager.js';
 import { SessionManager } from './sessionManager.js';
+import EmbeddedDebugger from './embeddedDebug.js';
+import { epicEmbeddedHandler } from './epicEmbeddedHandler.js';
 import { marked } from 'marked';
 
 // --- Configuration ---
@@ -24,6 +26,13 @@ class EHRAssistantApp {
     // Initialize session manager first
     this.sessionManager = new SessionManager();
     
+    // Initialize debug utility if in embedded mode or dev environment
+    if (window.self !== window.top || window.location.hostname === 'localhost') {
+      this.debugger = new EmbeddedDebugger();
+      this.debugger.createDebugPanel();
+      console.log('🔍 Embedded debugger initialized');
+    }
+    
     this.smartClient = null;
     this.dataFetcher = null;
     this.enhancedChat = null;
@@ -37,9 +46,10 @@ class EHRAssistantApp {
     try {
       console.log('Initializing EHR Assistant App...');
       console.log('Instance Key:', this.sessionManager.instanceKey);
+      console.log('Is Embedded:', window.self !== window.top);
       
-      // Clean up old instances (optional)
-      this.sessionManager.cleanupOldInstances();
+      // Clean up stale instances (more aggressive in embedded mode)
+      this.sessionManager.cleanupStaleInstances();
       
       // Initialize managers
       this.configManager = new ConfigManager();
@@ -54,6 +64,16 @@ class EHRAssistantApp {
       // Setup UI event listeners
       this.setupEventListeners();
       console.log('Event listeners setup');
+
+      // Check for context changes in embedded mode
+      if (window.self !== window.top) {
+        const contextChange = this.sessionManager.detectContextChange();
+        if (contextChange.changed) {
+          console.log('Context change detected:', contextChange);
+          // Clear the old instance data
+          this.sessionManager.clearInstance();
+        }
+      }
 
       // Check if we have existing patient context for this instance
       if (this.sessionManager.hasValidPatientContext()) {
@@ -73,7 +93,8 @@ class EHRAssistantApp {
           launchToken: !!launchToken, 
           iss: !!iss, 
           hasSmartKey: !!sessionStorage.getItem('SMART_KEY'),
-          instanceKey: this.sessionManager.instanceKey 
+          instanceKey: this.sessionManager.instanceKey,
+          isEmbedded: window.self !== window.top
         });
 
         if (sessionStorage.getItem('SMART_KEY')) {
@@ -89,6 +110,21 @@ class EHRAssistantApp {
       
       // Mark this instance as initialized
       this.sessionManager.markInitialized();
+      
+      // Set up periodic context check for embedded mode
+      if (window.self !== window.top) {
+        this.startEmbeddedContextMonitoring();
+        
+        // Initialize Epic embedded handler
+        epicEmbeddedHandler.init();
+        epicEmbeddedHandler.startContextPolling();
+        
+        // Listen for Epic context changes
+        window.addEventListener('epic-embedded-context-change', (event) => {
+          console.log('🔄 Epic context change event received:', event.detail);
+          this.handleEpicContextChange(event.detail);
+        });
+      }
       
     } catch (error) {
       console.error('Failed to initialize app:', error);
@@ -193,6 +229,70 @@ class EHRAssistantApp {
     }
   }
 
+  handleEpicContextChange(newContext) {
+    console.log('🏥 Handling Epic context change:', newContext);
+    
+    // Get current context
+    const currentContext = this.sessionManager.getPatientContext();
+    
+    // Check if patient has actually changed
+    if (currentContext.patId !== newContext.patientId || 
+        currentContext.csn !== newContext.csn) {
+      
+      console.log('Patient context has changed!');
+      console.log('Old:', { patId: currentContext.patId, csn: currentContext.csn });
+      console.log('New:', { patId: newContext.patientId, csn: newContext.csn });
+      
+      // Clear current instance data
+      this.sessionManager.clearInstance();
+      
+      // Update instance key to be context-based
+      const oldKey = this.sessionManager.instanceKey;
+      this.sessionManager.instanceKey = `ctx_${newContext.patientId}_${newContext.csn}`;
+      console.log('Updated instance key:', this.sessionManager.instanceKey);
+      
+      // Show notification
+      this.uiManager.displayError(
+        'Patient context has changed. Reloading for new patient...',
+        { autoReload: true }
+      );
+      
+      // Auto-reload after a short delay
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+    }
+  }
+
+  startEmbeddedContextMonitoring() {
+    // Monitor for context changes every 5 seconds in embedded mode
+    this.contextMonitorInterval = setInterval(() => {
+      const contextChange = this.sessionManager.detectContextChange();
+      if (contextChange.changed) {
+        console.log('Context change detected during monitoring:', contextChange);
+        
+        // Show a notification to the user
+        this.uiManager.displayError(
+          'Patient context has changed. Please refresh the page to load the new patient data.',
+          { 
+            oldPatient: contextChange.oldContext.patId,
+            newPatient: contextChange.newContext.patId 
+          }
+        );
+        
+        // Stop monitoring to prevent repeated alerts
+        clearInterval(this.contextMonitorInterval);
+        
+        // Optionally, auto-refresh after a delay
+        setTimeout(() => {
+          if (confirm('The patient context has changed. Would you like to reload with the new patient?')) {
+            window.location.reload();
+          }
+        }, 1000);
+      }
+    }, 5000);
+  }
+
   async authorizeWithEHR(launchToken, iss) {
     if (!this.isAbsoluteUrl(iss)) {
       this.uiManager.displayError(`Invalid 'iss' parameter: ${iss}`);
@@ -217,8 +317,18 @@ class EHRAssistantApp {
     this.uiManager.showLoading(true);
 
     try {
-      // Generate unique state parameter for this instance
-      const stateParam = this.sessionManager.instanceKey;
+      // For embedded mode, we need to be careful about the state parameter
+      let stateParam;
+      
+      if (window.self !== window.top) {
+        // In embedded mode, use a simpler state that Epic can handle
+        stateParam = `embed_${Date.now()}`;
+      } else {
+        // In external browser mode, use the instance key
+        stateParam = this.sessionManager.instanceKey;
+      }
+      
+      console.log('Using OAuth state parameter:', stateParam);
       
       await FHIR.oauth2.authorize({
         client_id: clientId,
@@ -226,7 +336,7 @@ class EHRAssistantApp {
         redirect_uri: APP_CONFIG.REDIRECT_URI,
         iss,
         launch: launchToken,
-        state: stateParam // Use instance key as state parameter
+        state: stateParam
       });
     } catch (err) {
       this.uiManager.displayError(`Auth error: ${err.message}`, err);
