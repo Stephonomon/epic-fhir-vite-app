@@ -1,8 +1,11 @@
-// src/fhirClient.js
+// src/fhirClient.js - Updated to work with instance-specific storage
+import { getInstanceManager } from './instanceSessionManager.js';
+
 export async function fetchResource({ client, path, backendUrl }) {
   if (!client?.state?.serverUrl || !client?.state?.tokenResponse?.access_token) {
     throw new Error("No valid SMART client state for fetching FHIR resource.");
   }
+  
   const serverUrl = client.state.serverUrl;
   let url = `${backendUrl}/${path}`;
   
@@ -19,12 +22,15 @@ export async function fetchResource({ client, path, backendUrl }) {
     url += `${sep}targetFhirServer=${encodeURIComponent(serverUrl)}`;
   }
 
-  const resp = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${client.state.tokenResponse.access_token}`,
-      'Accept': 'application/fhir+json'
-    }
-  });
+  // Add instance ID header for tracking (optional but useful for debugging)
+  const instanceManager = getInstanceManager();
+  const headers = {
+    'Authorization': `Bearer ${client.state.tokenResponse.access_token}`,
+    'Accept': 'application/fhir+json',
+    'X-Instance-Id': instanceManager.getInstanceId()
+  };
+
+  const resp = await fetch(url, { headers });
 
   if (!resp.ok) {
     const text = await resp.text();
